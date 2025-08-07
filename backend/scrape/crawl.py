@@ -19,50 +19,42 @@ async def main():
     )
 
     # 2. LLM extraction strategy
-    # llm_strategy = LLMExtractionStrategy(
-    #     llm_config=LLMConfig(provider="ollama/llama3.1",
-    #                          ),
-    #     schema=PackageInfo.model_json_schema(),
-    #     extraction_type="schema",
+    llm_strategy = LLMExtractionStrategy(
+        llm_config=LLMConfig(provider="groq/deepseek-r1-distill-llama-70b",
+                             api_token=os.getenv("GROQ_API_KEY")),
+        extraction_type="schema",
 
-    #     instruction="""
-    #     Focus on extracting the *core package information* from the SLT PEO TV "Packages & Charges" page.
+        #     instruction="""
+        #     Focus on extracting the *core package information* from the SLT PEO TV "Packages & Charges" page.
 
-    #                 Include:
-    #                 - Package name (e.g. PEO Lite, PEO Titanium)
-    #                 - Monthly rental
-    #                 - Installation or connection charges (if shown)
-    #                 - Any channel count or bundled features present (like number of channels)
-    #                 - Tariff names and TRC approval details (if in listing)
-    #                 - Validity (monthly, annual, etc.)
-    #                 - Any other key package details that are consistently formatted
-    #                 - information that is clearly structured in the page content
+        #                 Include:
+        #                 - Package name (e.g. PEO Lite, PEO Titanium)
+        #                 - Monthly rental
+        #                 - Installation or connection charges (if shown)
+        #                 - Any channel count or bundled features present (like number of channels)
+        #                 - Tariff names and TRC approval details (if in listing)
+        #                 - Validity (monthly, annual, etc.)
+        #                 - Any other key package details that are consistently formatted
+        #                 - information that is clearly structured in the page content
 
-    #                 Exclude:
-    #                 - All navigation, header, sidebar, footer, site menus, cookie notices
-    #                 - Advertisements or “Buy” buttons
+        #                 Exclude:
+        #                 - All navigation, header, sidebar, footer, site menus, cookie notices
+        #                 - Advertisements or “Buy” buttons
 
-    #                 Output as clean Markdown:
-    #                 - Use headings like `## Package: PEO Lite`
-    #                 - Present each package as a section
-    #                 - Provide key fields in a bullet list
-    #                 - Wrap any code or tabular content in Markdown code blocks or tables
-    #                         """,
+        #                 Output as clean Markdown:
+        #                 - Use headings like `## Package: PEO Lite`
+        #                 - Present each package as a section
+        #                 - Provide key fields in a bullet list
+        #                 - Wrap any code or tabular content in Markdown code blocks or tables
+        #                         """,
 
-    #     input_format="markdown",
-    #     verbose=True,
-    #     # apply_chunking=True,                 # Enable chunking
-    #     # # Split input into chunks of ~1000 tokens (under 6000 TPM limit)
-    #     # chunk_token_threshold=1000,
-    #     # # Slight overlap to preserve context between chunks
-    #     # overlap_rate=0.1,
-    #     # # Adjusted to avoid generating too long responses
-    #     # extra_args={"temperature": 0.0, "max_tokens": 800}
-    # )
+        verbose=True,
+        extra_args={"temperature": 0.0, "max_tokens": 2000}
+    )
 
     # 3) Crawler run config: skip cache, use extraction
     run_config = CrawlerRunConfig(
-        # extraction_strategy=llm_strategy,
+        extraction_strategy=llm_strategy,
         cache_mode=CacheMode.BYPASS,
         excluded_tags=['form', 'header', 'footer',
                        'nav', 'aside', 'script', 'style'],
@@ -93,29 +85,14 @@ async def main():
             with open("slt_data.md", "w", encoding="utf-8") as f:
                 f.write(result.markdown)
 
-        # extracted_data = json.loads(result.extracted_data)
-        # print("Extracted data:", extracted_data)
+            data = json.loads(result.extracted_content)
+            print("Extracted data:", json.dumps(data, indent=2))
 
-        # if not extracted_data:
-        #     print(
-        #         "No data extracted, input page structure.")
+            # Save to a JSON file
+            with open("../data/slt.json", "w", encoding="utf-8") as f:
+                json.dump(data, f, indent=2, ensure_ascii=False)
 
-            # llm_strategy.show_usage()
-
-        # ✅ Save result.markdown to a JSON file
-            # scraped_data = {
-            #     "url": url,
-            #     "content": result.extracted_data,
-            #     "markdown": result.markdown
-            # }
-
-            # # Save to JSON file
-            # output_path = "../data/slt.json"
-
-            # with open(output_path, "w", encoding="utf-8") as f:
-            #     json.dump(scraped_data, f, ensure_ascii=False, indent=4)
-
-            # print(f"✅ Markdown saved to: {output_path}")
+            llm_strategy.show_usage()
 
         else:
             print(f"Crawl failed: {result.error_message}")
