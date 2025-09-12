@@ -2,6 +2,8 @@ import './App.css'
 import React, { useState, useRef, useEffect } from 'react';
 import { Send, Bot, User, Wifi, MapPin, Phone, Globe } from 'lucide-react';
 
+const API_URL = import.meta.env.VITE_FRONTEND_API_URL;
+
 const SLTChatbot = () => {
   const [messages, setMessages] = useState([
     {
@@ -37,8 +39,9 @@ const SLTChatbot = () => {
     setInputMessage('');
     setIsLoading(true);
 
+
     try {
-      const response = await fetch('http://localhost:5000/chat', {
+      const response = await fetch(`${API_URL}/chat`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
