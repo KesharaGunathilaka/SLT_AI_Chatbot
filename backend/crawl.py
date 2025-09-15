@@ -1,6 +1,5 @@
 import asyncio
 import os
-import json
 import aiohttp
 from bs4 import BeautifulSoup
 import re
@@ -13,7 +12,7 @@ from crawl4ai import (
 )
 from datetime import datetime
 
-SITEMAP_URL = "https://slt.lk/en/sitemap"
+SITEMAP_URL = "https://slt.lk/en/sitemap"   # change this to the sitemap URL of the target website
 OUTPUT_DIR = "./data"
 RAW_DIR = os.path.join(OUTPUT_DIR, "crawl")
 BASE_URL = "https://slt.lk"   # change this to any website
@@ -37,12 +36,6 @@ async def fetch_sitemap_urls():
 
     soup = BeautifulSoup(html, "html.parser")
     urls = []
-    # for a in soup.find_all("a", href=True):
-    #     href = a["href"]
-    #     if href.startswith("http") and "slt.lk" in href:
-    #         urls.append(href)
-    #     elif href.startswith("/"):
-    #         urls.append("https://slt.lk" + href)
     for a in soup.find_all("a", href=True):
         href = a["href"]
         if href.startswith("http") and DOMAIN in href:
@@ -107,17 +100,9 @@ async def crawl_urls(urls, max_pages: int | None = None):
                         f.write(result.markdown)
                 else:
                     print(f"Crawl failed for {url}: {result.error_message}")
-                    
-    # Save combined JSON
-    # os.makedirs(OUTPUT_DIR, exist_ok=True)
-    # combined_path = os.path.join(OUTPUT_DIR, "slt_raw.json")
-    # with open(combined_path, "w", encoding="utf-8") as f:
-    #     json.dump(all_results, f, indent=2, ensure_ascii=False)
 
     print(f"✅ Finished. Saved {len(all_results)} pages")
     print(f"   - Per-page markdown: {RAW_DIR}/page_*.md")
-    # print(f"   - Combined JSON:     {combined_path}")
-
 
 async def main(max_pages: int | None = None):
     urls = await fetch_sitemap_urls()
