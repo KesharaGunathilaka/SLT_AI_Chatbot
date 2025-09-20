@@ -1,8 +1,33 @@
-Flask
-Flask-Cors
 geopy
-tqdm
-pytesseract
-requests
+# tqdm
+# pytesseract
 beautifulsoup4
-Pillow
+aiohttp
+# Pillow
+asyncpg
+crawl4ai
+pydantic
+groq
+
+
+# core
+flask==3.0.3
+flask-cors==4.0.1
+python-dotenv==1.0.1
+requests>=2.31.0
+
+
+# vector db
+chromadb==0.5.5
+
+
+# embeddings + reranker
+# Use FlagEmbedding for bge-m3 + reranker; sentence-transformers for utilities
+FlagEmbedding==1.2.11
+sentence-transformers==3.0.1
+transformers>=4.41.0
+
+
+# tokenization / utils
+# numpy
+scikit-learn>=1.4.2
