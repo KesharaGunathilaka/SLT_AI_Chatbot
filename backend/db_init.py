@@ -1,15 +1,3 @@
-# import asyncio
-# from db import create_pool, create_tables
-
-
-# async def run():
-#     pool = await create_pool()
-#     await create_tables(pool)
-#     await pool.close()
-
-# if __name__ == "__main__":
-#     asyncio.run(run())
-
 import asyncio
 import os
 from urllib.parse import urlparse

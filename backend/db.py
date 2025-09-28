@@ -37,10 +37,13 @@ async def create_tables(pool):
       current_version_id UUID,
       last_updated_at TIMESTAMPTZ,
       cleaned_content TEXT,
-      content_md TEXT
+      content_md TEXT,
+      is_vectorized BOOLEAN DEFAULT FALSE
     );
     CREATE INDEX IF NOT EXISTS idx_pages_url ON pages(url);
     """
+    # CREATE INDEX IF NOT EXISTS idx_pages_vectorize_status ON pages(is_vectorized, is_active);
+
 
     create_versions = """
     CREATE TABLE IF NOT EXISTS page_versions (
