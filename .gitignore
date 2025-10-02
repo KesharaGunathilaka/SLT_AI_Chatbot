@@ -5,6 +5,7 @@ env/
 
 #Data files
 data/
+test/
 
 # Other Python-related files to ignore
 __pycache__/
