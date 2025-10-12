@@ -1,209 +1,277 @@
-import re
-from flask import Flask, request, jsonify
-from flask_cors import CORS
-import json
 import os
-from geopy.geocoders import Nominatim
-from geopy.distance import geodesic
-from llm_ollama import query_ollama
+from time import time as _now
+from typing import List, Dict, Any, Optional, Tuple
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+import uvicorn
 
-app = Flask(__name__)
-user_sessions = {}
-CORS(app)
-
-# Load Data
+from sentence_transformers import SentenceTransformer
 try:
-    with open("data/branches.json", encoding="utf8") as f:
-        BRANCHES = json.load(f)
-    with open("data/index.json", encoding="utf8") as f:
-        INDEX = json.load(f)
-    print(f"✅ Loaded {len(INDEX)} scraped pages and {len(BRANCHES)} branches.")
-except Exception as e:
-    print(f"❌ Error loading data: {e}")
-    BRANCHES, INDEX = [], {}
+    # Optional reranker for better answer accuracy; will gracefully degrade if unavailable
+    from sentence_transformers import CrossEncoder  # type: ignore
+    _HAS_RERANKER = True
+except ImportError:
+    CrossEncoder = None  # type: ignore
+    _HAS_RERANKER = False
+from pymilvus import connections, Collection
+from llm_model import query_llm
 
+# CONFIG
+URI = os.getenv("ZILLIZ_CLOUD_URI")
+TOKEN = os.getenv("ZILLIZ_CLOUD_API_KEY")
+COLLECTION_NAME = os.getenv("VECTOR_COLLECTION", "slt_content")
+EMBEDDING_MODEL = os.getenv(
+    "EMBEDDING_MODEL", "BAAI/bge-m3")
+# NOTE: Ensure this matches the collection schema dim. bge-m3 -> 1024
+EMBEDDING_DIM = int(os.getenv("EMBEDDING_DIM", "1024"))
+EMBED_QUERY_PREFIX = os.getenv("EMBED_QUERY_PREFIX", "")  # e.g., "query: " for bge family if re-indexed accordingly
 
-#  Search & Scoring Logic
-def score_relevance(query, data):
-    query_words = query.lower().split()
-    text = data.get("text", "").lower()
-    if "ocr_images" in data:
-        text += " " + " ".join(img["text"].lower()
-                               for img in data["ocr_images"])
-    return sum(text.count(word) for word in query_words)
+# Retrieval tuning
+SEARCH_TOP_K = int(os.getenv("SEARCH_TOP_K", "20"))  # retrieve more then rerank
+CONTEXT_CHUNKS = int(os.getenv("CONTEXT_CHUNKS", "4"))  # how many chunks to send to LLM
+SCORE_THRESHOLD_IP = float(os.getenv("SCORE_THRESHOLD_IP", "0.2"))  # only for IP metric
+PRIORITY_BONUS = float(os.getenv("PRIORITY_BONUS", "0.001"))  # small bonus per priority point
+RECENCY_BONUS_HALF_LIFE_DAYS = float(os.getenv("RECENCY_BONUS_HALF_LIFE_DAYS", "90"))
+ENABLE_RERANK = os.getenv("ENABLE_RERANK", "true").lower() == "true"
+RERANK_MODEL = os.getenv("RERANK_MODEL", "cross-encoder/ms-marco-MiniLM-L-6-v2")
 
+# FASTAPI SETUP
+app = FastAPI()
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
-def find_relevant_pages(query, top_n=3):
-    scored = [(score_relevance(query, data), url, data)
-              for url, data in INDEX.items()]
-    return sorted([s for s in scored if s[0] > 0], reverse=True)[:top_n]
+# MODEL + VECTOR DB
+embedding_model = SentenceTransformer(EMBEDDING_MODEL)
 
-
-def convert_links_to_html(text):
-    # Turn any plain URL into clickable link
-    url_pattern = re.compile(r'(https?://[^\s)]+)')
-    return url_pattern.sub(r'<a href="\1" target="_blank" rel="noopener noreferrer" class="text-blue-600 underline">\1</a>', text)
-
-
-#  Location Handling
-def find_nearest_branches(user_coords, branches, top_n=3):
-    distances = []
-    for branch in branches:
-        dist = geodesic(
-            user_coords, (branch["latitude"], branch["longitude"])).km
-        distances.append((branch, dist))
-    return sorted(distances, key=lambda x: x[1])[:top_n]
-
-
-def format_branch(branch, dist_km):
-    lines = [f"📍 **{branch['name']}** – approx. {dist_km:.2f} km away"]
-    if branch.get("address"):
-        lines.append(f"🏠 Address: {branch['address']}")
-    if branch.get("phone"):
-        lines.append(f"📞 Phone: {branch['phone']}")
-    if branch.get("email"):
-        lines.append(f"📧 Email: {branch['email']}")
-    return "\n".join(lines)
-
-
-def location_response(user_input):
+reranker: Optional[Any] = None
+if ENABLE_RERANK and _HAS_RERANKER:
     try:
-        geolocator = Nominatim(user_agent="slt-location-finder")
+        reranker = CrossEncoder(RERANK_MODEL)
+    except (OSError, RuntimeError, ValueError) as e:
+        print(f"Reranker init failed ({RERANK_MODEL}): {e}")
+        reranker = None
 
-        if "near me" in user_input.lower() or user_input.strip().lower() in ["me", "here", "my location"]:
-            return "📍 Please tell me your city to find nearby SLT branches. For example: 'Find branches near Kandy'"
+connections.connect(alias="default", uri=URI, token=TOKEN)
+collection = Collection(COLLECTION_NAME)
+collection.load()
 
-        location = geolocator.geocode(f"{user_input}, Sri Lanka")
-        if not location:
-            return "❌ Sorry, I couldn't find that location. Please try with a nearby city or town."
-
-        user_coords = (location.latitude, location.longitude)
-        nearest = find_nearest_branches(user_coords, BRANCHES)
-
-        response = [
-            f"📌 Your location: **{location.address}**",
-            "\n🏢 **Here are the nearest SLT branches:**\n"
-        ]
-        for branch, dist in nearest:
-            response.append(format_branch(branch, dist))
-            response.append("")
-        response.append(
-            "🔗 For more: [SLT Branch Locator](https://www.slt.lk/en/contact-us/branch-locator/our-locations/our-network)")
-        return "\n".join(response)
-
-    except Exception as e:
-        return f"❌ Location detection error: {str(e)}"
-
-
-# Main Chat Endpoint
-@app.route("/chat", methods=["POST"])
-def chat():
+# Try to detect collection embedding dimension to guard against mismatch
+def _detect_collection_dim(coll: Collection, default_dim: int) -> int:
     try:
-        data = request.get_json()
-        user_input = data.get("message", "").strip().lower()
-        user_id = "default"  # placeholder, use real user ID or session in future
+        for f in coll.schema.fields:
+            if getattr(f, "name", None) == "embedding" and getattr(f, "dtype", None) is not None:
+                # In Milvus, dim is kept in field params for float vectors
+                params = getattr(f, "params", None) or {}
+                dim = params.get("dim") or params.get("DIM")
+                if dim:
+                    return int(dim)
+    except (AttributeError, KeyError, TypeError, ValueError) as e:
+        print(f"Warn: unable to detect collection dim, using default {default_dim}. Detail: {e}")
+    return default_dim
 
-        if not user_input:
-            return jsonify({"error": "❌ Empty message provided."}), 400
+COLLECTION_DIM = _detect_collection_dim(collection, EMBEDDING_DIM)
+_DIM_MISMATCH_WARNED = False
 
-        # 1. Casual chat
-        casual_replies = {
-            "hello": "👋 Hello! How can I help you today?",
-            "hi": "Hi there! 😊 Ask me anything about SLT services.",
-            "thanks": "🙏 You're welcome!",
-            "thank you": "Happy to help! 😊",
-            "bye": "👋 Goodbye! Have a great day.",
-        }
-        if user_input in casual_replies:
-            return jsonify({"reply": casual_replies[user_input]})
+# REQUEST/RESPONSE SCHEMA
 
-        # 2. If waiting for city name
-        if user_sessions.get(user_id) == "awaiting_city":
-            user_sessions[user_id] = None
-            response = location_response(user_input)
-            return jsonify({"reply": response})
 
-        # 3. Ask for city if vague query like "near me"
-        if "near me" in user_input or user_input in ["me", "my location", "near"]:
-            user_sessions[user_id] = "awaiting_city"
-            return jsonify({"reply": "📍 Sure! Please tell me your city name (e.g., Colombo, Kandy, or Galle)."})
+class ChatRequest(BaseModel):
+    message: str
+    session_id: str = "default"  # for multi-user support
 
-        # 4. Exact city name based lookup
-        for branch in BRANCHES:
-            name_lower = branch["name"].lower()
-            if name_lower in user_input:
-                lines = [f"📍 SLT Branch: **{branch['name']}**"]
-                if "contact" in user_input or "phone" in user_input:
-                    lines.append(
-                        f"📞 Phone: {branch.get('phone', 'Not available')}")
-                if "email" in user_input:
-                    lines.append(
-                        f"📧 Email: {branch.get('email', 'Not available')}")
-                if "address" in user_input or "location" in user_input:
-                    lines.append(
-                        f"🏠 Address: {branch.get('address', 'Not available')}")
-                if len(lines) > 1:
-                    return jsonify({"reply": "\n".join(lines)})
 
-        # 5. Generic branch/location query
-        location_keywords = ["branch", "location",
-                             "coverage", "area", "office"]
-        if any(k in user_input for k in location_keywords):
-            return jsonify({"reply": location_response(user_input)})
+class ChatResponse(BaseModel):
+    reply: str
+    next_suggestion: str
 
-        # 6. General Q&A via LLaMA
-        pages = find_relevant_pages(user_input)
-        if not pages:
-            return jsonify({"reply": "❌ I couldn't find relevant information. Try rephrasing your question."})
 
-        context_blocks = []
-        for _, url, data in pages:
-            summary = data.get("text", "")
-            ocr_list = data.get("ocr_images", [])
-            ocr_summary = "\n".join(
-                [f"- {img['src'].split('/')[-1]}: {img['text']}" for img in ocr_list[:3]])
-            block = f"🔗 Page: {url}\n📄 Text: {summary[:1000]}\n🖼️ OCR: {ocr_summary[:500]}"
-            context_blocks.append(block)
+# CONVERSATION MEMORY
+conversation_history: Dict[str, List[str]] = {}
 
-        full_context = "\n\n---\n\n".join(context_blocks)
+# HELPERS
 
-        prompt = f"""
-You are an expert assistant for Sri Lanka Telecom (SLT), helping users with their questions based on official content from www.slt.lk.
 
-🧑 User Question:
-{user_input}
+def _now_ts() -> int:
+    return int(_now())
 
-🗂️ Extracted Context:
-{full_context}
 
-🎯 Instructions:
-- Provide a clear, helpful answer based on this context.
-- Use bullet points, emojis, or short paragraphs if useful.
-- Always include the source SLT webpage URL (from the context) when possible.
-- Format links like this: [Visit Page](https://www.slt.lk/...)
-- If no answer is possible, say so kindly.
+def embed_query(query: str) -> List[float]:
+    # Keeping embeddings unnormalized to match how vectors were indexed (metric: IP)
+    text = f"{EMBED_QUERY_PREFIX}{query}" if EMBED_QUERY_PREFIX else query
+    return embedding_model.encode([text])[0].tolist()
 
-Answer:
+
+def _days_since(ts: Optional[int]) -> float:
+    if not ts:
+        return 365.0
+    return max(0.0, (_now() - ts) / 86400.0)
+
+
+def _score_with_boost(raw_score: float, priority: Optional[float], last_updated_at: Optional[int]) -> float:
+    # raw_score: Milvus IP similarity (higher is better)
+    # Add small boosts for priority and recency
+    pr = float(priority or 0.0)
+    days = _days_since(last_updated_at)
+    # recency bonus decays with half-life
+    half_life = max(1.0, RECENCY_BONUS_HALF_LIFE_DAYS)
+    recency_bonus = 0.02 * (0.5 ** (days / half_life))
+    return raw_score + PRIORITY_BONUS * pr + recency_bonus
+
+
+def _format_context_with_sources(chunks: List[Dict[str, Any]]) -> Tuple[str, List[str]]:
+    lines = []
+    sources = []
+    for idx, ch in enumerate(chunks, start=1):
+        url = ch.get("url") or ""
+        txt = ch.get("chunk_text") or ""
+        lines.append(f"[Source {idx}] URL: {url}\n{txt}")
+        sources.append(url)
+    return "\n\n".join(lines), sources
+
+
+def generate_answer(query: str, context_chunks: List[Dict[str, Any]], history: List[str]) -> Dict[str, str]:
+    context_text, sources = _format_context_with_sources(context_chunks)
+    history_text = "\n".join([f"- {q}" for q in history[-6:]])
+
+    prompt = f"""
+You are an expert assistant for Sri Lanka Telecom.
+Answer the user's question using ONLY the information from the provided sources. If the answer is not present in the sources, say you don't know and suggest one clarifying question.
+
+Guidelines:
+- Be precise and helpful. Use simple language.
+- Prefer the most recent and high-priority information implicitly.
+- If listing options (plans, branches), present them clearly and concisely.
+- Cite evidence using [Source N] inline where relevant.
+- At the end, propose ONE natural follow-up question.
+
+Conversation (last turns):
+{history_text}
+
+User question: {query}
+
+Sources:
+{context_text}
+
+Format the output exactly as:
+Answer: <your answer here with [Source N] citations>
+Follow-up question: <one question>
 """
-        answer = query_ollama(prompt)
-        return jsonify({"reply": convert_links_to_html(answer)})
 
-    except Exception as e:
-        return jsonify({"error": f"❌ Server error: {str(e)}"}), 500
+    response = query_llm(prompt)
+
+    # Split into answer + suggestion
+    answer, suggestion = response, "Would you like me to provide more details?"
+    if isinstance(response, str) and "Follow-up question:" in response:
+        parts = response.split("Follow-up question:")
+        answer = parts[0].replace("Answer:", "").strip()
+        suggestion = parts[1].strip()
+
+    # Append sources list for transparency
+    unique_sources = [s for i, s in enumerate(sources) if s and s not in sources[:i]]
+    if unique_sources:
+        src_block = "\n\nSources:\n" + "\n".join(f"- {u}" for u in unique_sources)
+        answer = f"{answer}{src_block}"
+
+    return {
+        "reply": answer,
+        "next_suggestion": suggestion
+    }
 
 
-# Health Check Route
+def _rerank(query: str, candidates: List[Dict[str, Any]], top_n: int) -> List[Dict[str, Any]]:
+    if not candidates:
+        return []
+    # If reranker available, use it; else rely on boosted Milvus score already applied
+    if reranker is not None:
+        pairs = [(query, c.get("chunk_text", "")) for c in candidates]
+        try:
+            scores = reranker.predict(pairs)
+            for c, s in zip(candidates, scores):
+                c["rerank_score"] = float(s)
+            candidates.sort(key=lambda x: x.get("rerank_score", 0.0), reverse=True)
+        except (RuntimeError, ValueError) as e:
+            print(f"Rerank failed: {e}")
+    return candidates[:top_n]
 
-@app.route("/", methods=["GET"])
-def health():
-    return jsonify({
-        "status": "✅ SLT Chatbot is running",
-        "scraped_pages": len(INDEX),
-        "branches_loaded": len(BRANCHES)
-    })
+# ROUTES
 
 
-# Start Flask
+@app.post("/chat", response_model=ChatResponse)
+async def chat_endpoint(req: ChatRequest):
+    query = req.message.strip()
+    if not query:
+        return ChatResponse(reply="⚠️ Please enter a valid question.", next_suggestion="")
+
+    # Update history
+    if req.session_id not in conversation_history:
+        conversation_history[req.session_id] = []
+    conversation_history[req.session_id].append(query)
+
+    # Embed query
+    query_vec = embed_query(query)
+
+    # Search in Milvus: get more results, then apply boosting + rerank
+    search_params = {"metric_type": "IP", "params": {"nprobe": 16}}
+    results = collection.search(
+        data=[query_vec],
+        anns_field="embedding",
+        param=search_params,
+        limit=SEARCH_TOP_K,
+        output_fields=["chunk_text", "priority", "last_updated_at", "url"],
+    )
+
+    if not results or not results[0]:
+        return ChatResponse(
+            reply="❌ Sorry, I couldn’t find relevant information in the knowledge base. Could you rephrase or be more specific?",
+            next_suggestion="Would you like help browsing broadband packages or finding a nearby branch?",
+        )
+
+    # Convert hits to dicts and apply preliminary filters/boosts
+    hits = []
+    for h in results[0]:
+        entity = h.entity
+        raw_score = float(h.distance) if hasattr(h, "distance") else 0.0
+        pr = entity.get("priority")
+        ts = entity.get("last_updated_at")
+        boosted = _score_with_boost(raw_score, pr, ts)
+        # Quick threshold on raw score to filter very weak matches (for IP metric)
+        if raw_score < SCORE_THRESHOLD_IP:
+            continue
+        hits.append({
+            "chunk_text": entity.get("chunk_text"),
+            "priority": pr,
+            "last_updated_at": ts,
+            "url": entity.get("url"),
+            "raw_score": raw_score,
+            "boosted_score": boosted,
+        })
+
+    if not hits:
+        return ChatResponse(
+            reply="I’m not confident I have the right answer from our indexed content. Could you provide a bit more detail?",
+            next_suggestion="Would you like to see available SLT broadband plans?",
+        )
+
+    # Prefer unique URLs to diversify context
+    dedup_by_url: Dict[str, Dict[str, Any]] = {}
+    for item in sorted(hits, key=lambda x: x["boosted_score"], reverse=True):
+        u = item.get("url") or ""
+        if u not in dedup_by_url:
+            dedup_by_url[u] = item
+    deduped = list(dedup_by_url.values())
+
+    # Rerank best candidates for final context
+    best = _rerank(query, deduped[: max(CONTEXT_CHUNKS * 3, 10)], CONTEXT_CHUNKS)
+
+    answer_data = generate_answer(query, best, conversation_history[req.session_id])
+    return ChatResponse(**answer_data)
+
+# MAIN
 if __name__ == "__main__":
-    print("🚀 SLT Assistant API starting...")
-    app.run(host="0.0.0.0", port=5000, debug=True)
+    uvicorn.run("app:app", host="0.0.0.0", port=5000, reload=True)

@@ -1,5 +1,5 @@
 geopy
-# tqdm
+tqdm
 # pytesseract
 beautifulsoup4
 aiohttp
@@ -8,26 +8,31 @@ asyncpg
 crawl4ai
 pydantic
 groq
+#torch  
+setuptools<81
 
 
 # core
-flask==3.0.3
-flask-cors==4.0.1
+# flask==3.0.3
+# flask-cors==4.0.1
 python-dotenv==1.0.1
 requests>=2.31.0
 
-
-# vector db
-chromadb==0.5.5
-
+fastapi==0.115.0
+uvicorn[standard]==0.30.6
 
 # embeddings + reranker
 # Use FlagEmbedding for bge-m3 + reranker; sentence-transformers for utilities
 FlagEmbedding==1.2.11
-sentence-transformers==3.0.1
-transformers>=4.41.0
+sentence-transformers
+transformers
 
 
 # tokenization / utils
 # numpy
 scikit-learn>=1.4.2
+
+# vectorize pipeline
+pymilvus==2.5.3
+langchain     # for the text splitters
+# uvloop  
