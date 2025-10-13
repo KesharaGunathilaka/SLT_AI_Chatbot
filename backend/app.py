@@ -1,6 +1,6 @@
 import os
-from time import time as _now
-from typing import List, Dict, Any, Optional, Tuple
+import math
+from typing import List, Dict, Tuple, Optional, Any
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -8,12 +8,16 @@ import uvicorn
 
 from sentence_transformers import SentenceTransformer
 try:
-    # Optional reranker for better answer accuracy; will gracefully degrade if unavailable
+    from FlagEmbedding import FlagReranker  # type: ignore
+    _FLAG_RERANK_AVAILABLE = True
+except Exception:
+    _FLAG_RERANK_AVAILABLE = False
+
+try:
     from sentence_transformers import CrossEncoder  # type: ignore
-    _HAS_RERANKER = True
-except ImportError:
-    CrossEncoder = None  # type: ignore
-    _HAS_RERANKER = False
+    _CROSS_ENCODER_AVAILABLE = True
+except Exception:
+    _CROSS_ENCODER_AVAILABLE = False
 from pymilvus import connections, Collection
 from llm_model import query_llm
 
@@ -21,20 +25,24 @@ from llm_model import query_llm
 URI = os.getenv("ZILLIZ_CLOUD_URI")
 TOKEN = os.getenv("ZILLIZ_CLOUD_API_KEY")
 COLLECTION_NAME = os.getenv("VECTOR_COLLECTION", "slt_content")
-EMBEDDING_MODEL = os.getenv(
-    "EMBEDDING_MODEL", "BAAI/bge-m3")
-# NOTE: Ensure this matches the collection schema dim. bge-m3 -> 1024
+EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "BAAI/bge-small-en-v1.5")
 EMBEDDING_DIM = int(os.getenv("EMBEDDING_DIM", "1024"))
-EMBED_QUERY_PREFIX = os.getenv("EMBED_QUERY_PREFIX", "")  # e.g., "query: " for bge family if re-indexed accordingly
 
-# Retrieval tuning
-SEARCH_TOP_K = int(os.getenv("SEARCH_TOP_K", "20"))  # retrieve more then rerank
-CONTEXT_CHUNKS = int(os.getenv("CONTEXT_CHUNKS", "4"))  # how many chunks to send to LLM
-SCORE_THRESHOLD_IP = float(os.getenv("SCORE_THRESHOLD_IP", "0.2"))  # only for IP metric
-PRIORITY_BONUS = float(os.getenv("PRIORITY_BONUS", "0.001"))  # small bonus per priority point
+# Retrieval/search tuning
+SEARCH_TOP_K = int(os.getenv("SEARCH_TOP_K", "20"))
+CONTEXT_CHUNKS = int(os.getenv("CONTEXT_CHUNKS", "4"))
+SCORE_THRESHOLD_IP = float(os.getenv("SCORE_THRESHOLD_IP", "0.2"))
+PRIORITY_BONUS = float(os.getenv("PRIORITY_BONUS", "0.001"))  # weight per priority point [0-100]
 RECENCY_BONUS_HALF_LIFE_DAYS = float(os.getenv("RECENCY_BONUS_HALF_LIFE_DAYS", "90"))
+
+# Reranking config
 ENABLE_RERANK = os.getenv("ENABLE_RERANK", "true").lower() == "true"
 RERANK_MODEL = os.getenv("RERANK_MODEL", "cross-encoder/ms-marco-MiniLM-L-6-v2")
+RERANK_TOP_K = int(os.getenv("RERANK_TOP_K", str(max(CONTEXT_CHUNKS * 3, 12))))
+
+# Multi-query expansion (optional)
+ENABLE_MQE = os.getenv("ENABLE_MQE", "false").lower() == "true"
+MQE_QUERIES = int(os.getenv("MQE_QUERIES", "2"))
 
 # FASTAPI SETUP
 app = FastAPI()
@@ -49,34 +57,13 @@ app.add_middleware(
 # MODEL + VECTOR DB
 embedding_model = SentenceTransformer(EMBEDDING_MODEL)
 
-reranker: Optional[Any] = None
-if ENABLE_RERANK and _HAS_RERANKER:
-    try:
-        reranker = CrossEncoder(RERANK_MODEL)
-    except (OSError, RuntimeError, ValueError) as e:
-        print(f"Reranker init failed ({RERANK_MODEL}): {e}")
-        reranker = None
+# Reranker initialization (lazy loaded on first use)
+_reranker_model: Optional[Any] = None
+_cross_encoder_model: Optional[Any] = None
 
 connections.connect(alias="default", uri=URI, token=TOKEN)
 collection = Collection(COLLECTION_NAME)
 collection.load()
-
-# Try to detect collection embedding dimension to guard against mismatch
-def _detect_collection_dim(coll: Collection, default_dim: int) -> int:
-    try:
-        for f in coll.schema.fields:
-            if getattr(f, "name", None) == "embedding" and getattr(f, "dtype", None) is not None:
-                # In Milvus, dim is kept in field params for float vectors
-                params = getattr(f, "params", None) or {}
-                dim = params.get("dim") or params.get("DIM")
-                if dim:
-                    return int(dim)
-    except (AttributeError, KeyError, TypeError, ValueError) as e:
-        print(f"Warn: unable to detect collection dim, using default {default_dim}. Detail: {e}")
-    return default_dim
-
-COLLECTION_DIM = _detect_collection_dim(collection, EMBEDDING_DIM)
-_DIM_MISMATCH_WARNED = False
 
 # REQUEST/RESPONSE SCHEMA
 
@@ -97,107 +84,193 @@ conversation_history: Dict[str, List[str]] = {}
 # HELPERS
 
 
-def _now_ts() -> int:
-    return int(_now())
-
-
 def embed_query(query: str) -> List[float]:
-    # Keeping embeddings unnormalized to match how vectors were indexed (metric: IP)
-    text = f"{EMBED_QUERY_PREFIX}{query}" if EMBED_QUERY_PREFIX else query
-    return embedding_model.encode([text])[0].tolist()
+    return embedding_model.encode([query])[0].tolist()
 
 
-def _days_since(ts: Optional[int]) -> float:
-    if not ts:
-        return 365.0
-    return max(0.0, (_now() - ts) / 86400.0)
+def _ensure_reranker() -> Tuple[Optional[Any], str]:
+    """Lazy init and return reranker model with provider label."""
+    global _reranker_model, _cross_encoder_model
+    if not ENABLE_RERANK:
+        return None, "disabled"
+    if _reranker_model is None and _FLAG_RERANK_AVAILABLE:
+        try:
+            # use fp16 for speed if available; will fallback on CPU
+            _reranker_model = FlagReranker(RERANK_MODEL, use_fp16=True)
+            return _reranker_model, "flagembedding"
+        except Exception:
+            _reranker_model = None
+    if _cross_encoder_model is None and _CROSS_ENCODER_AVAILABLE:
+        try:
+            _cross_encoder_model = CrossEncoder(RERANK_MODEL)
+            return _cross_encoder_model, "cross-encoder"
+        except Exception:
+            _cross_encoder_model = None
+    return None, "unavailable"
 
 
-def _score_with_boost(raw_score: float, priority: Optional[float], last_updated_at: Optional[int]) -> float:
-    # raw_score: Milvus IP similarity (higher is better)
-    # Add small boosts for priority and recency
-    pr = float(priority or 0.0)
-    days = _days_since(last_updated_at)
-    # recency bonus decays with half-life
-    half_life = max(1.0, RECENCY_BONUS_HALF_LIFE_DAYS)
-    recency_bonus = 0.02 * (0.5 ** (days / half_life))
-    return raw_score + PRIORITY_BONUS * pr + recency_bonus
+def _apply_metadata_boost(base_score: float, priority: Optional[float], last_updated_ts: Optional[int]) -> float:
+    """
+    Apply priority and recency boosts to the base vector similarity score (IP).
+
+    - priority: expected 0..100, scaled by PRIORITY_BONUS
+    - recency: exponential decay with half-life RECENCY_BONUS_HALF_LIFE_DAYS
+    Returns adjusted score.
+    """
+    score = base_score
+    # Priority boost
+    if priority is not None:
+        try:
+            p = float(priority)
+            score += PRIORITY_BONUS * max(0.0, min(100.0, p))
+        except Exception:
+            pass
+
+    # Recency boost
+    if last_updated_ts:
+        try:
+            from time import time as _time_now
+            now_ts = int(_time_now())
+            age_days = max(0.0, (now_ts - int(last_updated_ts)) / 86400.0)
+            # recency factor: exp(-ln(2) * age / half_life)
+            if RECENCY_BONUS_HALF_LIFE_DAYS > 0:
+                recency_factor = math.exp(-math.log(2) * age_days / RECENCY_BONUS_HALF_LIFE_DAYS)
+                score += 0.05 * recency_factor  # small bounded recency bonus
+        except Exception:
+            pass
+    return score
 
 
-def _format_context_with_sources(chunks: List[Dict[str, Any]]) -> Tuple[str, List[str]]:
-    lines = []
-    sources = []
-    for idx, ch in enumerate(chunks, start=1):
-        url = ch.get("url") or ""
-        txt = ch.get("chunk_text") or ""
-        lines.append(f"[Source {idx}] URL: {url}\n{txt}")
-        sources.append(url)
-    return "\n\n".join(lines), sources
+def _search_milvus(query_vec: List[float], limit: int) -> List[Dict[str, Any]]:
+    search_params = {"metric_type": "IP", "params": {"nprobe": 10}}
+    results = collection.search(
+        data=[query_vec],
+        anns_field="embedding",
+        param=search_params,
+        limit=limit,
+        output_fields=["chunk_text", "priority", "last_updated_at", "url", "category", "chunk_index"],
+    )
+    hits: List[Dict[str, Any]] = []
+    if results and results[0]:
+        for hit in results[0]:
+            # hit.distance is IP score (higher is better)
+            entity = hit.entity
+            base_score = float(hit.distance)
+
+            # Access fields as attributes or via dict-style indexing
+            chunk_text = getattr(entity, "chunk_text", "")
+            priority = getattr(entity, "priority", None)
+            last_updated_at = getattr(entity, "last_updated_at", None)
+            url = getattr(entity, "url", None)
+            category = getattr(entity, "category", None)
+            chunk_index = getattr(entity, "chunk_index", None)
+
+            boosted = _apply_metadata_boost(base_score, priority, last_updated_at)
+
+            hits.append({
+                "text": chunk_text,
+                "score": base_score,
+                "boosted_score": boosted,
+                "url": url,
+                "category": category,
+                "chunk_index": chunk_index,
+            })
+    # Filter by threshold on base IP score first to keep quality
+    hits = [h for h in hits if h["score"] >= SCORE_THRESHOLD_IP]
+    # Then sort by boosted score
+    hits.sort(key=lambda x: x["boosted_score"], reverse=True)
+    return hits
 
 
-def generate_answer(query: str, context_chunks: List[Dict[str, Any]], history: List[str]) -> Dict[str, str]:
-    context_text, sources = _format_context_with_sources(context_chunks)
-    history_text = "\n".join([f"- {q}" for q in history[-6:]])
+def _multi_query_expand(user_query: str, n: int) -> List[str]:
+    """Use the LLM to generate n paraphrases or related sub-queries for recall boost."""
+    if n <= 0:
+        return []
+    prompt = f"""
+Paraphrase or expand the following question into {n} diverse, short queries that might retrieve complementary relevant documents. Return each on a new line, no numbering, no quotes.
+
+Question: {user_query}
+"""
+    try:
+        raw = query_llm(prompt)
+        lines = [l.strip("- •\t ") for l in raw.splitlines() if l.strip()]
+        # Keep top-N unique
+        seen = set()
+        out: List[str] = []
+        for l in lines:
+            if l not in seen:
+                out.append(l)
+                seen.add(l)
+            if len(out) >= n:
+                break
+        return out
+    except Exception:
+        return []
+
+
+def _rerank(query: str, candidates: List[Dict[str, Any]], top_k: int) -> List[Dict[str, Any]]:
+    if not candidates:
+        return []
+    model, provider = _ensure_reranker()
+    if not model:
+        # Fallback: return by boosted score if no reranker
+        return sorted(candidates, key=lambda x: x["boosted_score"], reverse=True)[:top_k]
+
+    pairs = [(query, c["text"]) for c in candidates]
+    try:
+        if provider == "flagembedding":
+            # returns relevance score per pair
+            scores = model.compute_score(pairs, normalize=True)
+        else:
+            # CrossEncoder returns scores for all pairs
+            scores = model.predict(pairs)
+        for c, s in zip(candidates, scores):
+            c["rerank_score"] = float(s)
+        return sorted(candidates, key=lambda x: x.get("rerank_score", x["boosted_score"]), reverse=True)[:top_k]
+    except Exception:
+        # On failure, degrade gracefully
+        return sorted(candidates, key=lambda x: x["boosted_score"], reverse=True)[:top_k]
+
+
+def generate_answer(query: str, context_chunks: List[str], history: List[str]) -> Dict[str, str]:
+    context_text = "\n\n".join(context_chunks)
+    history_text = "\n".join(
+        [f"- {q}" for q in history[-5:]])  # last 5 questions
 
     prompt = f"""
-You are an expert assistant for Sri Lanka Telecom.
-Answer the user's question using ONLY the information from the provided sources. If the answer is not present in the sources, say you don't know and suggest one clarifying question.
+You are an assistant for Sri Lanka Telecom.
+Use the context below to answer the user's question.
 
-Guidelines:
-- Be precise and helpful. Use simple language.
-- Prefer the most recent and high-priority information implicitly.
-- If listing options (plans, branches), present them clearly and concisely.
-- Cite evidence using [Source N] inline where relevant.
-- At the end, propose ONE natural follow-up question.
-
-Conversation (last turns):
-{history_text}
-
-User question: {query}
-
-Sources:
+Context:
 {context_text}
 
-Format the output exactly as:
-Answer: <your answer here with [Source N] citations>
-Follow-up question: <one question>
+Conversation History:
+{history_text}
+
+Current User Question: {query}
+
+1. Provide a clear helpful answer.
+2. Then, suggest ONE next natural follow-up question related to the user’s interest.
+Format output like this:
+
+Answer: <your answer here>
+Follow-up question: <next suggested question>
 """
 
     response = query_llm(prompt)
 
     # Split into answer + suggestion
     answer, suggestion = response, "Would you like me to provide more details?"
-    if isinstance(response, str) and "Follow-up question:" in response:
+
+    if "Follow-up question:" in response:
         parts = response.split("Follow-up question:")
         answer = parts[0].replace("Answer:", "").strip()
         suggestion = parts[1].strip()
-
-    # Append sources list for transparency
-    unique_sources = [s for i, s in enumerate(sources) if s and s not in sources[:i]]
-    if unique_sources:
-        src_block = "\n\nSources:\n" + "\n".join(f"- {u}" for u in unique_sources)
-        answer = f"{answer}{src_block}"
 
     return {
         "reply": answer,
         "next_suggestion": suggestion
     }
-
-
-def _rerank(query: str, candidates: List[Dict[str, Any]], top_n: int) -> List[Dict[str, Any]]:
-    if not candidates:
-        return []
-    # If reranker available, use it; else rely on boosted Milvus score already applied
-    if reranker is not None:
-        pairs = [(query, c.get("chunk_text", "")) for c in candidates]
-        try:
-            scores = reranker.predict(pairs)
-            for c, s in zip(candidates, scores):
-                c["rerank_score"] = float(s)
-            candidates.sort(key=lambda x: x.get("rerank_score", 0.0), reverse=True)
-        except (RuntimeError, ValueError) as e:
-            print(f"Rerank failed: {e}")
-    return candidates[:top_n]
 
 # ROUTES
 
@@ -213,63 +286,42 @@ async def chat_endpoint(req: ChatRequest):
         conversation_history[req.session_id] = []
     conversation_history[req.session_id].append(query)
 
-    # Embed query
-    query_vec = embed_query(query)
+    # Embed + retrieve (with optional multi-query expansion)
+    all_candidates: List[Dict[str, Any]] = []
 
-    # Search in Milvus: get more results, then apply boosting + rerank
-    search_params = {"metric_type": "IP", "params": {"nprobe": 16}}
-    results = collection.search(
-        data=[query_vec],
-        anns_field="embedding",
-        param=search_params,
-        limit=SEARCH_TOP_K,
-        output_fields=["chunk_text", "priority", "last_updated_at", "url"],
-    )
+    # main query
+    main_vec = embed_query(query)
+    all_candidates.extend(_search_milvus(main_vec, SEARCH_TOP_K))
 
-    if not results or not results[0]:
-        return ChatResponse(
-            reply="❌ Sorry, I couldn’t find relevant information in the knowledge base. Could you rephrase or be more specific?",
-            next_suggestion="Would you like help browsing broadband packages or finding a nearby branch?",
-        )
+    # expanded queries for recall
+    if ENABLE_MQE and MQE_QUERIES > 0:
+        expansions = _multi_query_expand(query, MQE_QUERIES)
+        for q in expansions:
+            vec = embed_query(q)
+            all_candidates.extend(_search_milvus(vec, max(SEARCH_TOP_K // 2, CONTEXT_CHUNKS * 3)))
 
-    # Convert hits to dicts and apply preliminary filters/boosts
-    hits = []
-    for h in results[0]:
-        entity = h.entity
-        raw_score = float(h.distance) if hasattr(h, "distance") else 0.0
-        pr = entity.get("priority")
-        ts = entity.get("last_updated_at")
-        boosted = _score_with_boost(raw_score, pr, ts)
-        # Quick threshold on raw score to filter very weak matches (for IP metric)
-        if raw_score < SCORE_THRESHOLD_IP:
+    # Deduplicate by text to avoid repeats
+    deduped: List[Dict[str, Any]] = []
+    seen_text = set()
+    for c in all_candidates:
+        t = c["text"].strip()
+        if not t or t in seen_text:
             continue
-        hits.append({
-            "chunk_text": entity.get("chunk_text"),
-            "priority": pr,
-            "last_updated_at": ts,
-            "url": entity.get("url"),
-            "raw_score": raw_score,
-            "boosted_score": boosted,
-        })
+        seen_text.add(t)
+        deduped.append(c)
 
-    if not hits:
+    if not deduped:
         return ChatResponse(
-            reply="I’m not confident I have the right answer from our indexed content. Could you provide a bit more detail?",
-            next_suggestion="Would you like to see available SLT broadband plans?",
+            reply="❌ Sorry, I couldn’t find any relevant information.",
+            next_suggestion="Would you like me to help with SLT broadband packages?",
         )
 
-    # Prefer unique URLs to diversify context
-    dedup_by_url: Dict[str, Dict[str, Any]] = {}
-    for item in sorted(hits, key=lambda x: x["boosted_score"], reverse=True):
-        u = item.get("url") or ""
-        if u not in dedup_by_url:
-            dedup_by_url[u] = item
-    deduped = list(dedup_by_url.values())
+    # Rerank and pick final context
+    reranked = _rerank(query, deduped[:RERANK_TOP_K], top_k=max(CONTEXT_CHUNKS, 4))
+    top_chunks = [c["text"] for c in reranked[:CONTEXT_CHUNKS]]
 
-    # Rerank best candidates for final context
-    best = _rerank(query, deduped[: max(CONTEXT_CHUNKS * 3, 10)], CONTEXT_CHUNKS)
+    answer_data = generate_answer(query, top_chunks, conversation_history[req.session_id])
 
-    answer_data = generate_answer(query, best, conversation_history[req.session_id])
     return ChatResponse(**answer_data)
 
 # MAIN

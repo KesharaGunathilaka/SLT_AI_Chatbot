@@ -20,7 +20,7 @@ URI = os.getenv("ZILLIZ_CLOUD_URI")
 TOKEN = os.getenv("ZILLIZ_CLOUD_API_KEY")
 
 COLLECTION_NAME = os.getenv("VECTOR_COLLECTION")
-EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "sentence-transformers/all-mpnet-base-v2")
+EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "BAAI/bge-small-en-v1.5")
 EMBEDDING_DIM = 1024
 
 BATCH_SIZE = int(os.getenv("EMBED_BATCH", 32))
