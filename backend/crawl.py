@@ -3,17 +3,10 @@ import os
 import aiohttp
 from bs4 import BeautifulSoup
 import re
-from crawl4ai import (
-    AsyncWebCrawler,
-    BrowserConfig,
-    CrawlerRunConfig,
-    CacheMode,
-    DefaultMarkdownGenerator,
-)
+from crawl4ai import (AsyncWebCrawler, BrowserConfig, CrawlerRunConfig, CacheMode, DefaultMarkdownGenerator)
 import hashlib
 from urllib.parse import urlparse
 from datetime import UTC, datetime
-# from streamlit import html
 from db import create_pool, create_tables, upsert_page
 from classify import classify_page
 import uuid
@@ -29,6 +22,9 @@ LLM_CONCURRENCY = 1
 def sanitize_filename(url: str) -> str:
     filename = re.sub(r'https?://', '', url)
     filename = re.sub(r'slt\.lk/', '', filename)
+    filename = re.sub(r'en/about-us', 'Ab', filename)
+    filename = re.sub(r'en/business', 'Bu', filename)
+    filename = re.sub(r'en/broadband', 'Br', filename)
     filename = re.sub(r'[<>:"/\\|?*]', '_', filename)
     if len(filename) > 100:
         filename = filename[:100] + "_truncated"
@@ -77,7 +73,7 @@ def extract_metadata(html: str, url: str, headers: dict) -> dict:
     return metadata
 
 async def fetch_sitemap_urls():
-    timeout = aiohttp.ClientTimeout(total=60)
+    timeout = aiohttp.ClientTimeout(total=120)
 
     async with aiohttp.ClientSession(timeout=timeout) as session:
         async with session.get(SITEMAP_URL) as resp:
@@ -104,17 +100,23 @@ async def crawl_urls(urls, pool, max_pages: int | None = None):
     if max_pages:
         urls = urls[:max_pages]
 
-    browser_config = BrowserConfig(verbose=True)
+    browser_config = BrowserConfig(
+            verbose=True,
+            headless=True
+            )
+    
     md_strategy = DefaultMarkdownGenerator(
-        content_source="fit_html",
-        options={"ignore_links": True}
+        content_source="cleaned_html",
+        options={
+            "ignore_images": True,
+            "skip_internal_links": True
+        }
     )
     
     run_config = CrawlerRunConfig(
         markdown_generator=md_strategy,
         cache_mode=CacheMode.BYPASS,
-        excluded_tags=["form", "header", "footer",
-                       "nav", "aside", "script", "style"],
+        excluded_tags=["header", "footer", "aside", "script", "style", "form"],
         session_id="slt",
     )
 
@@ -146,18 +148,18 @@ async def crawl_urls(urls, pool, max_pages: int | None = None):
                     all_results.append(
                         {"url": result.url, "metadata": metadata, "content": result.markdown})
                     
+                    safe_filename = sanitize_filename(url)
 
                     async with llm_semaphore:
                         classification = await classify_page(metadata, content_md)
                         metadata["category"] = classification.get("category")
                         metadata["tags"] = classification.get("tags") or []
-                        metadata["priority"] = classification.get("priority", metadata["priority"])
                         llm_raw = classification.get("llm_raw")
                         llm_cleaned = classification.get("llm_cleaned")
 
-                    upsert_result = await upsert_page(pool, url, metadata, content_md, html, llm_raw, llm_cleaned)
+                    upsert_result = await upsert_page(pool, safe_filename, url, metadata, content_md, html, llm_raw, llm_cleaned)
 
-                    safe_filename = sanitize_filename(url)                    
+                                       
                     out_path = os.path.join(
                         RAW_DIR, f"{safe_filename}")
                     with open(out_path, "w", encoding="utf-8") as f:
@@ -175,10 +177,11 @@ async def crawl_urls(urls, pool, max_pages: int | None = None):
                             f.write(f"  {line}\n")
                         f.write("---\n\n")
                         f.write(f"---\n")
-                        f.write(f"llm_cleaned: |\n")
+                        f.write(f"llm_cleaned_Content: |\n")
                         for line in (llm_cleaned or "").splitlines():
                             f.write(f"  {line}\n")
                         f.write(f"---\n\n")
+                        f.write(f"Raw_Content: |\n")
                         f.write(result.markdown)
                     
                     processed += 1
@@ -207,7 +210,7 @@ async def main(max_pages: int | None = None):
 if __name__ == "__main__":
     import argparse
 
-    parser = argparse.ArgumentParser(description="Stage 1: Crawl SLT (with metadata + priority)")
+    parser = argparse.ArgumentParser(description="Crawl SLT Content (with metadata)")
     parser.add_argument("--max", type=int, default=None,
                         help="Max pages to crawl")
     args = parser.parse_args()

@@ -19,7 +19,7 @@ DEFAULT_CONFIG = {
     #"groq_model": "qwen/qwen3-32b",
     "temperature": 0.1,
     "wait_time": 30,   # seconds to wait before any LLM request
-    "max_retries": 2,  # max retries for rate limit (429)
+    "max_retries": 3,  # max retries for rate limit (429)
     "fallback_to_cloud_llm": True
 }
 
@@ -60,6 +60,9 @@ def query_llm(prompt, config=None):
 
     elif provider == "groq":
         return _query_groq(prompt, base)
+    
+    elif provider == "backup":
+        return _query_backup(prompt, base)
 
     else:
         raise ValueError(f"Unknown provider: {provider}")
@@ -88,6 +91,41 @@ def _query_lmstudio(prompt, config):
     res.raise_for_status()
     data = res.json()
     return data["choices"][0]["message"]["content"].strip()
+
+
+def _query_groq(prompt, config):
+    headers = {
+        "Authorization": f"Bearer {GROQ_API_KEY}",
+        "Content-Type": "application/json",
+    }
+    payload = {
+        "model": config["groq_model"],
+        "messages": [{"role": "user", "content": prompt}],
+        "temperature": config["temperature"],
+    }
+
+    try:
+        res = requests.post(GROQ_API_URL, headers=headers,
+                            json=payload, timeout=30)
+
+        if res.status_code == 429:
+            print("Groq rate limit hit. Falling back to backup model...")
+            if config.get("fallback_to_cloud_llm", True):
+                return _query_backup(prompt, config)
+            else:
+                raise Exception("Groq rate limit exceeded")
+
+        res.raise_for_status()
+
+        data = res.json()
+        return data["choices"][0]["message"]["content"].strip()
+
+    except requests.exceptions.RequestException as e:
+        print(f"Groq request failed: {e}")
+        if config.get("fallback_to_cloud_llm", True):
+            print("Falling back to Backup model...")
+            return _query_backup(prompt, config)
+        raise Exception(f"Groq API failed: {e}")
 
 
 def _query_backup(prompt, config):
@@ -127,46 +165,3 @@ def _query_backup(prompt, config):
             wait *= 2
 
     raise Exception("Backup model request failed after multiple retries.")
-
-
-def _query_groq(prompt, config):
-    headers = {
-        "Authorization": f"Bearer {GROQ_API_KEY}",
-        "Content-Type": "application/json",
-    }
-    payload = {
-        "model": config["groq_model"],
-        "messages": [{"role": "user", "content": prompt}],
-        "temperature": config["temperature"],
-    }
-
-    wait = 5  # start wait time for backoff
-    for attempt in range(config.get("max_retries", 2)):
-        try:
-            res = requests.post(GROQ_API_URL, headers=headers,
-                                json=payload, timeout=30)
-            
-            if res.status_code == 429:
-                retry_after = int(res.headers.get("Retry-After", wait))
-                print(
-                    f"Groq rate limit hit. Waiting {retry_after}s before retry ({attempt+1}/{config['max_retries']})...")
-                time.sleep(retry_after)
-                wait *= 2  # exponential backoff
-                continue
-
-            res.raise_for_status()
-
-            data = res.json()
-            return data["choices"][0]["message"]["content"].strip()
-        
-        except requests.exceptions.RequestException as e:
-            print(f"Groq request failed (attempt {attempt+1}): {e}")
-            time.sleep(wait)
-            wait *= 2
-
-        # If all retries fail
-    print("Max retries exceeded for Groq API.")
-    if config.get("fallback_to_cloud_llm", True):
-        print("Falling back to Backup...")
-        return _query_backup(prompt, config)
-    raise Exception("Groq API failed after multiple retries.")

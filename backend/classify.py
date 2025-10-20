@@ -4,23 +4,47 @@ from typing import List
 from llm_model import query_llm
 
 DEFAULT_CATEGORIES = [
-    "broadband", "promotions", "contact", "news", "new_connections",
-    "cloud", "services", "peotv", "megaline", "faq", "about_us"
+    # Core Services
+    "broadband_services",
+    "mobile_services",
+    "fixed_telephony",
+    "peotv",
+    "business_solutions",
+
+    # Customer Operations
+    "new_connections",
+    "billing_payments",
+    "account_management",
+
+    # Support & Contact
+    "technical_support",
+    "contact_locations",
+    "call_centers",
+    "branches",
+
+    # Business Units
+    "enterprise_cloud",
+    "corporate_services",
+
+    # Information
+    "promotions_offers",
+    "news_announcements",
+    "about_company",
+    "faq_help"
 ]
 
 
 def build_prompt(categories: List[str], url: str, title: str | None, meta_desc: str | None, content_snippet: str):
     categories_text = "\n".join(f"- {c}" for c in categories)
     prompt = f"""
-You are a helpful classifier. Given a SINGLE webpage (url, title, meta description, and the full text content), return EXACTLY one JSON object and nothing else.
+You are a helpful classifier. Given a SINGLE webpage (url and the full text content), return EXACTLY one JSON object and nothing else.
 
 Rules:
 1. Choose **one** category. Prefer one of these categories when only appropriate (do not invent new ones). If none fit, set category to "Other: <suggestion>" (example: "Other: Billing").
 2. Provide a list of tags (short strings) that describe key topics.
-3. Suggest an integer priority from 0 to 100 (100 = highest). Use higher priority for site root and important pages like pricing, product landing pages, contact, support; lower for deep blog posts.
-4. Provide a one-line reason for your choice in the `reason` field.
-5. Remove irrelevant sections (navigation menus, headers, footers, cookie notices, repeated boilerplate).
-6. Produce a cleaned version of the main text content only.
+3. Provide a one-line reason for your choice in the `reason` field.
+4. Remove irrelevant sections (navigation menus, headers, footers, cookie notices, repeated boilerplate).
+5. Produce a cleaned version of the main text content only.
 
 Available categories:
 {categories_text}
@@ -29,15 +53,12 @@ Now classify this page. Be concise. Output STRICT JSON only.
 
 Input:
 url: {url}
-title: {title or ""}
-meta_description: {meta_desc or ""}
 full_content: {content_snippet}
 
 Example output:
 {{
     "category":"Data Packages",
     "tags":["4G","prepaid","bundle"],
-    "priority":85,
     "reason":"Pricing/product landing with package details",
     "llm_cleaned":"# Data Packages\\nHere are the available 4G prepaid bundles..."
 }}
@@ -76,12 +97,11 @@ async def classify_page(metadata: dict, content: str, categories: list | None = 
 
     parsed = safe_parse_json(raw)
     if not parsed:
-        # fallback: rule-based small classifier using keywords
         url = metadata.get("url", "").lower()
         title = (metadata.get("title") or "").lower()
         fallback_cat = "General"
-        if "data" in url or "package" in url or "data" in title:
-            fallback_cat = "Data Packages"
+        if "broadband" in url or "package" in url or "broadband" in title:
+            fallback_cat = "Broadband"
         elif "megaline" in url:
             fallback_cat = "Megaline"
         elif "about" in url:
@@ -89,7 +109,6 @@ async def classify_page(metadata: dict, content: str, categories: list | None = 
         parsed = {
             "category": fallback_cat,
             "tags": [],
-            "priority": metadata.get("priority", 30),
             "reason": "Fallback rule-based classification",
             "llm_cleaned": content[:20000]
         }
@@ -98,19 +117,11 @@ async def classify_page(metadata: dict, content: str, categories: list | None = 
     # normalize parsed fields
     category = parsed.get("category") if parsed.get("category") else "General"
     tags = parsed.get("tags") or []
-    try:
-        priority = int(parsed.get("priority")) if parsed.get(
-            "priority") is not None else metadata.get("priority", 30)
-        priority = max(0, min(100, priority))
-    except Exception:
-        priority = metadata.get("priority", 30)
-
     llm_cleaned = parsed.pop("llm_cleaned", "")
 
     return {
         "category": category,
         "tags": tags,
-        "priority": priority,
         "reason": parsed.get("reason", ""),
         "llm_cleaned": llm_cleaned,
         "llm_raw": json.dumps(parsed, ensure_ascii=False) if parsed else raw

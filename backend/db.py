@@ -2,7 +2,7 @@ import asyncpg
 import os
 import json
 import uuid
-from datetime import datetime,UTC
+from datetime import datetime, UTC
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -18,6 +18,7 @@ async def create_tables(pool):
     create_pages = """
     CREATE TABLE IF NOT EXISTS pages (
       page_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      name TEXT NOT NULL,
       url TEXT UNIQUE NOT NULL,
       scraped_at TIMESTAMPTZ DEFAULT now(),
       title TEXT,
@@ -37,13 +38,11 @@ async def create_tables(pool):
       current_version_id UUID,
       last_updated_at TIMESTAMPTZ,
       cleaned_content TEXT,
-      content_md TEXT,
+      raw_content TEXT,
       is_vectorized BOOLEAN DEFAULT FALSE
     );
     CREATE INDEX IF NOT EXISTS idx_pages_url ON pages(url);
     """
-    # CREATE INDEX IF NOT EXISTS idx_pages_vectorize_status ON pages(is_vectorized, is_active);
-
 
     create_versions = """
     CREATE TABLE IF NOT EXISTS page_versions (
@@ -73,7 +72,7 @@ async def get_version_by_id(conn, version_id):
     return await conn.fetchrow("SELECT id, checksum FROM page_versions WHERE id = $1", version_id)
 
 
-async def upsert_page(pool, url: str, metadata: dict, content_md: str, raw_html: str | None, llm_raw: str | None, llm_cleaned: str | None):
+async def upsert_page(pool, safe_filename: str, url: str, metadata: dict, content_md: str, raw_html: str | None, llm_raw: str | None, llm_cleaned: str | None):
     """
     Upsert logic:
       - If page doesn't exist: create page + page_version and set current_version_id.
@@ -97,21 +96,22 @@ async def upsert_page(pool, url: str, metadata: dict, content_md: str, raw_html:
                 await conn.execute(
                     """
                     INSERT INTO pages(
-                        page_id, url, canonical_url, title, 
+                        page_id, name, url, canonical_url, title, 
                         category, priority, tags, scraped_at, 
                         checksum, etag, last_modified_at, content_type, 
                         http_status, is_active, first_seen, last_scraped_at, 
-                        meta_description, cleaned_content, content_md, current_version_id, last_updated_at
+                        meta_description, cleaned_content, raw_content, current_version_id, last_updated_at
                     )
                     VALUES (
-                        $1,$2,$3,$4,
-                        $5,$6,$7,$8,
-                        $9,$10,$11,$12,
-                        $13,$14,$15,$16,
-                        $17,$18,$19,$20,$21
+                        $1,$2,$3,$4,$5,
+                        $6,$7,$8,$9,
+                        $10,$11,$12,$13,
+                        $14,$15,$16,$17,
+                        $18,$19,$20,$21,$22
                     )
                     """,
                     page_id,
+                    safe_filename,
                     url,
                     metadata.get("canonical_url"),
                     metadata.get("title"),
@@ -205,7 +205,7 @@ async def upsert_page(pool, url: str, metadata: dict, content_md: str, raw_html:
                             title = $3, 
                             category = $4,
                             priority = $5,
-                            content_md = $6
+                            raw_content = $6
                         WHERE page_id = $7
                         """,
                         version_id,
@@ -223,7 +223,7 @@ async def upsert_page(pool, url: str, metadata: dict, content_md: str, raw_html:
                         UPDATE pages
                         SET last_scraped_at = now(),
                             category = $1,
-                            priority = $2,
+                            priority = $2
                         WHERE page_id = $3
                         """,
                         metadata.get("category"),
