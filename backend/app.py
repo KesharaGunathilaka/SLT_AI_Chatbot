@@ -2,6 +2,7 @@ import os
 import re
 import math
 import asyncio
+import numpy as np
 from typing import List, Dict, Optional, Any
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -61,10 +62,21 @@ app.add_middleware(
 )
 
 # MILVUS CONNECTION
-connections.connect(alias="default", uri=URI, token=TOKEN)
-collection = Collection(COLLECTION_NAME)
-collection.load()
-build_bm25_index(collection)
+
+
+@app.on_event("startup")
+async def startup_event():
+    # connect and load collection (guard with try/except)
+    try:
+        connections.connect(alias="default", uri=URI, token=TOKEN)
+        global collection
+        collection = Collection(COLLECTION_NAME)
+        collection.load()
+        await asyncio.to_thread(build_bm25_index, collection)
+        print("Startup complete: Milvus loaded and BM25 built.")
+    except Exception as e:
+        print("Startup error:", e)
+        raise
 
 # MODELS 
 embedder = SentenceTransformer(EMBEDDING_MODEL)
@@ -135,16 +147,44 @@ bm25_docs = []
 bm25_urls = []
 
 
-def build_bm25_index(collection: Collection):
+def build_bm25_index(collection: Collection, limit: int = 100000):
     global bm25_index, bm25_docs, bm25_urls
-    print(" Building BM25 keyword index (once at startup)...")
-    query = f""
-    results = collection.query(expr="", output_fields=["chunk_text", "url"], limit=100000)
-    bm25_docs = [r["chunk_text"] for r in results if r.get("chunk_text")]
-    bm25_urls = [r.get("url", "") for r in results]
+    print("Building BM25 keyword index (once at startup)...")
+    # Query Milvus in pages to avoid memory spikes
+    batch = 10000
+    offset = 0
+    docs = []
+    urls = []
+    while True:
+        try:
+            results = collection.query(
+                expr="", output_fields=["chunk_text", "url"], limit=batch, offset=offset)
+        except TypeError:
+            # older pymilvus doesn't support offset — read once with larger limit
+            results = collection.query(
+                output_fields=["chunk_text", "url"], limit=limit)
+            offset = 0
+        if not results:
+            break
+        for r in results:
+            text = r.get("chunk_text")
+            if text:
+                docs.append(text)
+                urls.append(r.get("url", ""))
+        if len(results) < batch:
+            break
+        offset += batch
+        if offset >= limit:
+            break
+
+    bm25_docs = docs
+    bm25_urls = urls
     tokenized_corpus = [re.findall(r'\w+', doc.lower()) for doc in bm25_docs]
-    bm25_index = BM25Okapi(tokenized_corpus)
-    print(f"✅ BM25 index built with {len(bm25_docs)} chunks.")
+    if tokenized_corpus:
+        bm25_index = BM25Okapi(tokenized_corpus)
+        print(f"BM25 index built with {len(bm25_docs)} chunks.")
+    else:
+        print("BM25 index empty (no docs found).")
 
 
 def bm25_search(query: str, k: int = 10) -> List[Dict[str, Any]]:
@@ -203,19 +243,37 @@ def rerank(query: str, cands: List[Dict[str, Any]], top_k: int) -> List[Dict[str
         return sorted(cands, key=lambda x: x["boosted"], reverse=True)[:top_k]
 
 
+def cosine_sim(a: np.ndarray, b: np.ndarray) -> float:
+    if np.linalg.norm(a) == 0 or np.linalg.norm(b) == 0:
+        return 0.0
+    return float(np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b)))
+
+
 def select_diverse_chunks(chunks: List[Dict[str, Any]], top_n: int) -> List[str]:
-    """Keep semantic diversity among top chunks."""
     if len(chunks) <= top_n:
         return [c["text"] for c in chunks]
-    chosen = [chunks[0]]
-    for c in chunks[1:]:
-        sim = max(embedder.similarity(embedder.encode([c["text"]])[0],
-                                      embedder.encode([x["text"] for x in chosen])[0]))
-        if sim < 0.8:
-            chosen.append(c)
-        if len(chosen) >= top_n:
+    # Precompute embeddings for candidate texts in batch
+    texts = [c["text"] for c in chunks]
+    embeddings = embedder.encode(texts, convert_to_numpy=True)
+    chosen_texts = []
+    chosen_embs = []
+    # greedy selection: pick highest-scoring first, then add if diverse
+    for idx, c in enumerate(chunks):
+        emb = embeddings[idx]
+        if not chosen_embs:
+            chosen_texts.append(c["text"])
+            chosen_embs.append(emb)
+        else:
+            max_sim = max(cosine_sim(emb, ce) for ce in chosen_embs)
+            if max_sim < 0.85:  # diversity threshold; tune as needed
+                chosen_texts.append(c["text"])
+                chosen_embs.append(emb)
+        if len(chosen_texts) >= top_n:
             break
-    return [c["text"] for c in chosen]
+    # fallback: if we didn't reach top_n (too similar), just return top N texts
+    if len(chosen_texts) < top_n:
+        return [c["text"] for c in chunks[:top_n]]
+    return chosen_texts
 
 
 # GENERATE ANSWER
