@@ -10,10 +10,10 @@ import pytesseract
 from llm_ollama import query_ollama
 from tqdm import tqdm
 
-BASE_URL = "https://www.slt.lk"
+BASE_URL = "https://slt.lk/index.php/en/broadband/packages"
 VISITED, DATA = set(), {}
 FAILED_IMAGES = set()
-MAX_DEPTH, TIMEOUT = 5, 1800  # seconds
+MAX_DEPTH, TIMEOUT = 5, 300  # seconds
 start_time = time.time()
 
 
@@ -58,8 +58,11 @@ def crawl(url, depth=0):
                 ocr = extract_ocr(urljoin(url, src))
                 if ocr:
                     ocrs.append(ocr)
-        full = text + "\n" + "\n".join(img['text']
-                                       for img in ocrs if img['text'])
+        full = f"Page URL: {url}\n\n{text}\n\nOCR Content:\n" + \
+            "\n".join(img['text'] for img in ocrs if img['text'])
+
+        # full = text + "\n" + "\n".join(img['text']
+        #                                for img in ocrs if img['text'])
         # summary = query_ollama(
         #     f"Summarize this page in bullet points:\n\n{full}")
         DATA[url] = {

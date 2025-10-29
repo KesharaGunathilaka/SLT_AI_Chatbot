@@ -1,0 +1,5 @@
+![Sri Lanka Telecom](https://slt.lk/themes/slt/templates/includes/slt_mobi_home/assets/images/landing/slt-logo.svg)
+![mobile](https://slt.lk/themes/slt/templates/includes/slt_mobi_home/assets/images/landing/mobile.png) ![](https://slt.lk/themes/slt/templates/includes/slt_mobi_home/assets/images/landing/mobile.svg)
+![fixed](https://slt.lk/themes/slt/templates/includes/slt_mobi_home/assets/images/landing/fixed.png) ![](https://slt.lk/themes/slt/templates/includes/slt_mobi_home/assets/images/landing/fixed.svg)
+## [Mobile Postpaid & prepaid connections, Broadband ( 3G & 4G/LTE), Digital Services, MCash and Business Solutions. ](https://mobitel.lk?index=true)
+## [Fixed Broadband (Fibre, ADSL & 4G/LTE), PEOTV, SME/Micro Business and Enterprise Solutions. ](https://slt.lk/home)

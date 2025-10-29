@@ -38,25 +38,24 @@ const SLTChatbot = () => {
     setIsLoading(true);
 
     try {
-      const response = await fetch('http://localhost:5000/chat', {
+      const response = await fetch('http://localhost:5000/query', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ message: inputMessage }),
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ question: inputMessage }),
       });
 
       const data = await response.json();
 
-      if (data.reply) {
+      if (data.answer) {
         const botMessage = {
           id: messages.length + 2,
-          text: data.reply,
+          text: data.answer,
           sender: 'bot',
           timestamp: new Date()
         };
         setMessages(prev => [...prev, botMessage]);
-      } else if (data.error) {
+      }
+      else if (data.error) {
         const errorMessage = {
           id: messages.length + 2,
           text: `❌ Error: ${data.error}`,
