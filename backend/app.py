@@ -1,12 +1,13 @@
+import os
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 import json
 import os
 from geopy.geocoders import Nominatim
 from geopy.distance import geodesic
-from llm_ollama import query_ollama
-import re
-
+# from llm_groq import query_groq as query_llm
+from llm_ollama import query_ollama as query_llm
+from vector_store import query_similar_docs
 
 app = Flask(__name__)
 user_sessions = {}
@@ -23,11 +24,8 @@ except Exception as e:
     print(f"❌ Error loading data: {e}")
     BRANCHES, INDEX = [], {}
 
-# -------------------------------
-# 🔍 Search & Scoring Logic
-# -------------------------------
 
-
+#  Search & Scoring Logic
 def score_relevance(query, data):
     query_words = query.lower().split()
     text = data.get("text", "").lower()
@@ -38,9 +36,8 @@ def score_relevance(query, data):
 
 
 def find_relevant_pages(query, top_n=3):
-    scored = [(score_relevance(query, data), url, data)
-              for url, data in INDEX.items()]
-    return sorted([s for s in scored if s[0] > 0], reverse=True)[:top_n]
+    results = query_similar_docs(query, top_k=top_n)
+    return [(1, id_, {"text": doc}) for id_, doc in zip(results["ids"][0], results["documents"][0])]
 
 
 def convert_links_to_html(text):
@@ -49,11 +46,7 @@ def convert_links_to_html(text):
     return url_pattern.sub(r'<a href="\1" target="_blank" rel="noopener noreferrer" class="text-blue-600 underline">\1</a>', text)
 
 
-# -------------------------------
-# 📍 Location Handling
-# -------------------------------
-
-
+#  Location Handling
 def find_nearest_branches(user_coords, branches, top_n=3):
     distances = []
     for branch in branches:
@@ -80,36 +73,95 @@ def location_response(user_input):
 
         if "near me" in user_input.lower() or user_input.strip().lower() in ["me", "here", "my location"]:
             return "📍 Please tell me your city to find nearby SLT branches. For example: 'Find branches near Kandy'"
-
-        location = geolocator.geocode(f"{user_input}, Sri Lanka")
-        if not location:
-            return "❌ Sorry, I couldn't find that location. Please try with a nearby city or town."
-
-        user_coords = (location.latitude, location.longitude)
-        nearest = find_nearest_branches(user_coords, BRANCHES)
-
-        response = [
-            f"📌 Your location: **{location.address}**",
-            "\n🏢 **Here are the nearest SLT branches:**\n"
-        ]
-        for branch, dist in nearest:
-            response.append(format_branch(branch, dist))
-            response.append("")
-        response.append(
-            "🔗 For more: [SLT Branch Locator](https://www.slt.lk/en/contact-us/branch-locator/our-locations/our-network)")
-        return "\n".join(response)
-
-    except Exception as e:
-        return f"❌ Location detection error: {str(e)}"
-
-# -------------------------------
-# 🤖 Main Chat Endpoint
-# -------------------------------
+=======
+import chromadb
+from chromadb.utils import embedding_functions
+from groq import Groq
 
 
-@app.route("/chat", methods=["POST"])
-def chat():
+# ---------------------------
+# Configurations
+# ---------------------------
+
+# Load environment variables (make sure you set GROQ_API_KEY in your .env or system)
+GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+
+if not GROQ_API_KEY:
+    raise ValueError(
+        "❌ Missing GROQ_API_KEY. Please set it in environment variables.")
+
+# Initialize Flask
+app = Flask(__name__)
+
+# Allow requests from frontend (Vite default: localhost:5173)
+CORS(app, resources={r"/*": {"origins": "http://localhost:5173"}})
+
+# ---------------------------
+# Vector DB (Chroma)
+# ---------------------------
+
+# Persistent client stores vectors in ./chroma_db
+client = chromadb.PersistentClient(path="chroma_db")
+
+# Use default OpenAI embedding function (you can replace with HuggingFace if offline)
+embedding_fn = embedding_functions.DefaultEmbeddingFunction()
+
+# Connect to your collection (should match the name you used in ingest_and_index.py)
+collection = client.get_or_create_collection(
+    name="slt_docs", embedding_function=embedding_fn)
+
+# ---------------------------
+# LLM (Groq)
+# ---------------------------
+groq_client = Groq(api_key=GROQ_API_KEY)
+
+
+def query_groq(context, question):
+    """Send context + question to Groq model and get response"""
+    prompt = f"""
+    You are an AI assistant for Sri Lanka Telecom (SLT).
+    Use the following context to answer the question as accurately as possible.
+    
+    Context:
+    {context}
+    
+    Question: {question}
+    Answer:
+    """
+    response = groq_client.chat.completions.create(
+        model="llama3-70b-8192",  # you can swap with smaller models if needed
+        messages=[{"role": "user", "content": prompt}],
+        temperature=0.2,
+        max_tokens=500,
+    )
+    return response.choices[0].message.content
+
+
+# ---------------------------
+# API Route
+# ---------------------------
+
+@app.route("/query", methods=["POST"])
+def query():
+    data = request.get_json()
+    question = data.get("question", "")
+
+    if not question.strip():
+        return jsonify({"answer": "⚠️ Please enter a valid question."}), 400
+
+    # Retrieve top 3 relevant docs from Chroma
+    results = collection.query(
+        query_texts=[question],
+        n_results=3
+    )
+
+    # Extract contexts
+    contexts = results.get("documents", [[]])[0]
+    context_text = "\n\n".join(contexts)
+
+    # Get final answer from Groq
     try:
+
         data = request.get_json()
         user_input = data.get("message", "").strip().lower()
         user_id = "default"  # placeholder, use real user ID or session in future
@@ -117,7 +169,7 @@ def chat():
         if not user_input:
             return jsonify({"error": "❌ Empty message provided."}), 400
 
-        # 1. Casual chat (hi, thanks, etc.)
+        # 1. Casual chat
         casual_replies = {
             "hello": "👋 Hello! How can I help you today?",
             "hi": "Hi there! 😊 Ask me anything about SLT services.",
@@ -196,29 +248,23 @@ You are an expert assistant for Sri Lanka Telecom (SLT), helping users with thei
 
 Answer:
 """
-        answer = query_ollama(prompt)
+        answer = query_llm(prompt)
         return jsonify({"reply": convert_links_to_html(answer)})
 
+
+        answer = query_groq(context_text, question)
+
     except Exception as e:
-        return jsonify({"error": f"❌ Server error: {str(e)}"}), 500
+        print("❌ Groq error:", e)
+        return jsonify({"answer": "⚠️ Error connecting to Groq AI."}), 500
 
-# -------------------------------
-# ✅ Health Check Route
-# -------------------------------
-
-
-@app.route("/", methods=["GET"])
-def health():
-    return jsonify({
-        "status": "✅ SLT Chatbot is running",
-        "scraped_pages": len(INDEX),
-        "branches_loaded": len(BRANCHES)
-    })
+    return jsonify({"answer": answer})
 
 
-# -------------------------------
-# 🚀 Start Flask
-# -------------------------------
+# ---------------------------
+# Run Flask
+# ---------------------------
+
 if __name__ == "__main__":
-    print("🚀 SLT Assistant API starting...")
+    # Make sure this matches frontend (5173)
     app.run(host="0.0.0.0", port=5000, debug=True)

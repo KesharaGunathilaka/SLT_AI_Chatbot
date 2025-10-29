@@ -137,3 +137,17 @@ dist
 # Vite logs files
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
+
+
+/backend/__pycache__/
+backend/__pycache__/llm_ollama.cpython-312.pyc
+
+/backend/.env
+/backend/.env.*
+/.env
+chroma_db/
+data/chroma_db/
+
+venv/
+/__pycache__
+/.venv/
