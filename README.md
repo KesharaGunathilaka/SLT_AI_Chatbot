@@ -393,7 +393,7 @@ This creates a basic `data/index.json` file with scraped content.
    - `qwen/qwen3-32b`
 
 **Backup Model Fallback**: The system automatically falls back to a backup model if the primary Groq API encounters rate limits (HTTP 429). The backup model:
-- Uses a **separate API key** (`GROQ_API_KEY_BACKUP`) with its own rate limit quota
+- Uses a separate API key (`GROQ_API_KEY_BACKUP`) with its own rate limit quota
 - Can use the same model (since rate limits are per API key) or a different model
 - Implements exponential backoff retry logic
 - Automatically retries up to `max_retries` times
@@ -512,8 +512,6 @@ If you encounter rate limit errors (HTTP 429):
 2. System automatically switches to backup model using `GROQ_API_KEY_BACKUP`
 3. Backup model retries with exponential backoff (5s, 10s, 20s, etc.)
 4. If backup also fails after max retries, error is raised
-
-**Note**: The backup uses a separate API key, which has its own rate limit quota. This is why the same model can be used for both primary and backup - the rate limits are per API key, not per model.
 
 ### Debug Mode
 
