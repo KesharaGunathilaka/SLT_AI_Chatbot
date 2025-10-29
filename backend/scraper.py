@@ -12,10 +12,12 @@ import pytesseract
 from tqdm import tqdm
 from vector_store import index_data  # ✅ NEW: For vector DB
 
-BASE_URL = "https://www.slt.lk"
+BASE_URL = "https://slt.lk/index.php/en/broadband/packages"
 VISITED, DATA = set(), {}
 FAILED_IMAGES = set()
+
 MAX_DEPTH, TIMEOUT = 8, 3600  # seconds
+
 start_time = time.time()
 
 

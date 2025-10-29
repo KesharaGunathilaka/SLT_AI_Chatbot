@@ -1,0 +1,104 @@
+{
+    "url": "https://www.slt.lk/index.php/en/personal/peo-tv/peocharges",
+    "content": [
+        {
+            "package_name": "PEOTV Single Play",
+            "price": 6990,
+            "currency": "LKR",
+            "features": [
+                "PEOTV TV service"
+            ],
+            "includes": [
+                "Fibre ONT/ADSL Router",
+                "PEOTV STB"
+            ],
+            "notes": "Applicable for existing Fibre or Megaline connections.",
+            "error": false
+        },
+        {
+            "package_name": "FTTH Triple Play - PEOTV",
+            "price": 12500,
+            "currency": "LKR",
+            "features": [
+                "Voice",
+                "Broadband",
+                "PEOTV"
+            ],
+            "includes": [
+                "Fibre ONT",
+                "PEOTV STB",
+                "Telephone"
+            ],
+            "notes": "Available for Home or Office.",
+            "error": false
+        },
+        {
+            "package_name": "Fibre Double Play",
+            "price": 12500,
+            "currency": "LKR",
+            "features": [
+                "Voice",
+                "PEOTV"
+            ],
+            "includes": [
+                "Fibre ONT",
+                "PEOTV STB",
+                "Telephone"
+            ],
+            "error": false
+        },
+        {
+            "package_name": "1 Gbps Fibre Triple Play - PEOTV",
+            "price": 20000,
+            "currency": "LKR",
+            "features": [
+                "Voice",
+                "Broadband",
+                "PEOTV",
+                "Unlimited free calls (on‑net & off‑net)"
+            ],
+            "includes": [
+                "Fibre ONT",
+                "PEOTV STB",
+                "Telephone"
+            ],
+            "monthly_rental": "None",
+            "notes": "No monthly rental charge.",
+            "error": false
+        },
+        {
+            "package_name": "Megaline Double Play",
+            "price": 15000,
+            "currency": "LKR",
+            "features": [
+                "Telephone",
+                "PEOTV"
+            ],
+            "includes": [
+                "PEOTV STB",
+                "ADSL Router",
+                "Telephone"
+            ],
+            "trc_reference": "Megaline TRC/SLT/PRO/24/04",
+            "error": false
+        },
+        {
+            "package_name": "Megaline Triple Play",
+            "price": 15000,
+            "currency": "LKR",
+            "features": [
+                "Telephone",
+                "Broadband",
+                "PEOTV"
+            ],
+            "includes": [
+                "PEOTV STB",
+                "ADSL Router",
+                "Telephone"
+            ],
+            "trc_reference": "Megaline TRC/SLT/PRO/24/04",
+            "error": false
+        }
+    ],
+    "markdown": "###  [](javascript:void\\(0\\))PEOTV Charges\n![all you want](https://www.slt.lk/sites/default/files/landing_page_banners/PeoHOME.jpg)\nPEOTV brings the latest Local & Global news & Entertainment from around the world at a click of a button. Its interactivity will amaze you & will make you want PEO around you almost all the time to guide & help you in providing high quality personalized entertainment to suite your taste.\n  * Services   \nOffered\n  * Calling   \nPlan\n  * Customer Premises   \nEquipment\n  * Connection   \nCharge \n\n\n  * ![PEOTV](https://www.slt.lk/sites/default/files/megaline_connection_logo/PEOTVnc-icon2.png)\n  * ![](https://www.slt.lk/sites/default/files/images/products%20related/PEOTVSinglePlay-icon.png)\nPEOTV\n  * [Home](javascript:void\\(0\\);)  \n**OR**  \n[Office](javascript:void\\(0\\);)\n  * Fibre ONT/ADSL Router\nand\nPEOTV STB\n  * Rs.**6,990**.00  \n(Existing Fibre)\nRs.**6,990**.00  \n(Existing Megaline)\n\n\n  * ![FTTH Tripple Play-PeoTV](https://www.slt.lk/sites/default/files/megaline_connection_logo/packages-smartline-tp_6_0.PNG)\n  * ![](https://www.slt.lk/sites/default/files/images/Tripple%20play.png)\nVoice,  \nBroadband,  \n& PeoTV\n  * [Home](https://www.slt.lk/personal/telephone/calling-plans/smartline/calling-plans)  \n**OR**  \n[Office](https://www.slt.lk/personal/telephone/calling-plans/smartline/calling-plans)\n  * Fibre ONT\nPEOTV STB\nTelephone\n  * Rs.**12,500**.00\n\n\n  * ![Fibre Doble Play](https://www.slt.lk/sites/default/files/megaline_connection_logo/packages-smartline-dp-1_9.png)\n  * ![](https://www.slt.lk/sites/default/files/images/icon_smartline_doubleplay.png)\nVoice  \n& PeoTV\n  * [Home](https://www.slt.lk/personal/telephone/calling-plans/smartline/calling-plans)  \n**OR**  \n[Office](https://www.slt.lk/personal/telephone/calling-plans/smartline/calling-plans)\n  * Fibre ONT\nPEOTV STB\nTelephone\n  * Rs.**12,500**.00\n\n\n  * ![1 Gbps Fibre Triple Play - PEO TV](https://www.slt.lk/sites/default/files/megaline_connection_logo/Fibre1Gbps-icon1_1_0.png)\n  * ![](https://www.slt.lk/sites/default/files/images/Tripple%20play.png)\nVoice,  \nBroadband  \n& PeoTV\n  * Unlimited free calls  \n(on-net & off-net)  \nNo monthly rental\n  * Fibre ONT\nPEOTV STB\nTelephone\n  * Rs.**20,000**.00\n\n\n  * ![Megaline Double Play](https://www.slt.lk/sites/default/files/megaline_connection_logo/package-Mega-double-large_01_1_0.png)\n  * ![](https://www.slt.lk/sites/default/files/images/icon_tele_doubleplay.png)  \nTelephone & PEOTV\n  * [Mega Home](https://www.slt.lk/personal/telephone/calling-plans/megaline)  \n**OR**  \n[Mega Office](https://www.slt.lk/personal/telephone/calling-plans/megaline)\n  * PEOTV STB\nADSL Router for PEOTV\nTelephone\n  * Rs.**15,000**.00\n(with ADSL Router)\n\n\n  * ![Megaline Tripple Play](https://www.slt.lk/sites/default/files/megaline_connection_logo/package-Mega-Triple-large_11_1_0.png)\n  * ![](https://www.slt.lk/sites/default/files/images/icon_tele-broadband-peo_Large.png)\nTelephone  \nBroadband  \nPEOTV\n  * [Mega Home](https://www.slt.lk/personal/telephone/calling-plans/megaline)  \n**OR**  \n[Mega Office](https://www.slt.lk/personal/telephone/calling-plans/megaline)\n  * PEOTV STB\nADSL Router\nTelephone\n  * Rs.**15,000**.00\n(with ADSL Router)\n\n\n[](javascript:void\\(0\\)) [](javascript:void\\(0\\))\nTRC Reference : Megaline **TRC/SLT/PRO/24/04**\n  * [Downloads](https://www.slt.lk/index.php/en/personal/peo-tv/peocharges#downloads)\n\n\n  * Application for new PEOTV connection\n[ Download ](https://www.slt.lk/sites/default/files/downloads/general_downloads/NewConnection2024_PeoTV.pdf%20)\n  * PEOTV user guide (Netgem STB)\n[ Download ](https://www.slt.lk/sites/default/files/downloads/general_downloads/PeoTV_userguide_v3_2.pdf%20)\n  * PEOTV user guide (HwaCom STB)\n[ Download ](https://www.slt.lk/sites/default/files/downloads/general_downloads/PeoTV-UG2_2.pdf%20)\n  * PEOTV Terms and Conditions \n[ Download ](https://www.slt.lk/sites/default/files/downloads/general_downloads/SLT%20PEO%20TV%20-%20Terms%20and%20Condition%20English_0.pdf%20)\n\n\n![](https://www.slt.lk/themes/slt/images/bg-footer-shade.png)\n"
+}
