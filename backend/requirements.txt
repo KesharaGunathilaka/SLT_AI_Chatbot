@@ -11,3 +11,9 @@ chromadb
 sentence-transformers
 aiofiles 
 pydantic
+python-dotenv
+tiktoken
+nltk
+transformers 
+torch
+groq
