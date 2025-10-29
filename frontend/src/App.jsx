@@ -1,5 +1,7 @@
-import './App.css'
+import './App.css';
 import React, { useState, useRef, useEffect } from 'react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import { Send, Bot, User, Wifi, MapPin, Phone, Globe } from 'lucide-react';
 
 const API_URL = import.meta.env.VITE_FRONTEND_API_URL;
@@ -25,6 +27,11 @@ const SLTChatbot = () => {
     scrollToBottom();
   }, [messages]);
 
+  const linkifyText = (text) => {
+    const urlRegex = /(https?:\/\/[^\s]+)/g;
+    return text.replace(urlRegex, (url) => `[${url}](${url})`);
+  };
+
   const sendMessage = async () => {
     if (!inputMessage.trim()) return;
 
@@ -39,7 +46,6 @@ const SLTChatbot = () => {
     setInputMessage('');
     setIsLoading(true);
 
-
     try {
       const response = await fetch(`${API_URL}/chat`, {
         method: 'POST',
@@ -52,9 +58,10 @@ const SLTChatbot = () => {
       const data = await response.json();
 
       if (data.reply) {
+        const processedReply = linkifyText(data.reply);
         const botMessage = {
           id: messages.length + 2,
-          text: data.reply,
+          text: processedReply,
           sender: 'bot',
           timestamp: new Date()
         };
@@ -99,7 +106,7 @@ const SLTChatbot = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 ">
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
       {/* Header */}
       <header className="bg-white shadow-sm border-b border-gray-200">
         <div className="max-w-4xl mx-auto px-4 py-4">
@@ -119,16 +126,16 @@ const SLTChatbot = () => {
       <div className="max-w-4xl mx-auto px-4 py-6">
         <div className="bg-white rounded-2xl shadow-xl overflow-hidden">
           {/* Messages Area */}
-          <div className="h-96 overflow-y-auto p-6 space-y-4 bg-gray-50">
+          <div className="h-[600px] overflow-y-auto p-6 space-y-4 bg-gray-50">
             {messages.map((message) => (
               <div
                 key={message.id}
                 className={`flex ${message.sender === 'user' ? 'justify-end' : 'justify-start'}`}
               >
                 <div
-                  className={`max-w-xs lg:max-w-md px-4 py-3 rounded-2xl shadow-sm ${message.sender === 'user'
-                    ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white'
-                    : 'bg-white text-gray-800 border border-gray-200'
+                  className={`max-w-xl px-4 py-3 rounded-2xl shadow-sm break-words ${message.sender === 'user'
+                      ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white'
+                      : 'bg-white text-gray-800 border border-gray-200'
                     }`}
                 >
                   <div className="flex items-start space-x-2">
@@ -138,13 +145,46 @@ const SLTChatbot = () => {
                     {message.sender === 'user' && (
                       <User className="w-5 h-5 mt-0.5 text-white flex-shrink-0" />
                     )}
-                    <div className="flex-1">
+                    <div className="flex-1 text-sm leading-relaxed prose prose-sm max-w-none">
+                      <ReactMarkdown
+                        remarkPlugins={[remarkGfm]}
+                        components={{
+                          a: ({ href, children }) => (
+                            <a
+                              href={href}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-blue-600 underline hover:text-blue-800"
+                            >
+                              {children}
+                            </a>
+                          ),
+                          table: ({ children }) => (
+                            <div className="overflow-x-auto">
+                              <table className="table-auto border-collapse border border-gray-300 w-full text-sm my-2">
+                                {children}
+                              </table>
+                            </div>
+                          ),
+                          th: ({ children }) => (
+                            <th className="border border-gray-300 bg-gray-100 px-2 py-1 text-left font-semibold">
+                              {children}
+                            </th>
+                          ),
+                          td: ({ children }) => (
+                            <td className="border border-gray-300 px-2 py-1 align-top">
+                              {children}
+                            </td>
+                          ),
+                        }}
+                      >
+                        {message.text}
+                      </ReactMarkdown>
+
                       <div
-                        className="whitespace-pre-wrap text-sm leading-relaxed"
-                        dangerouslySetInnerHTML={{ __html: message.text }}
-                      />
-                      <div className={`text-xs mt-2 ${message.sender === 'user' ? 'text-blue-100' : 'text-gray-500'
-                        }`}>
+                        className={`text-xs mt-2 ${message.sender === 'user' ? 'text-blue-100' : 'text-gray-500'
+                          }`}
+                      >
                         {message.timestamp.toLocaleTimeString([], {
                           hour: '2-digit',
                           minute: '2-digit',
