@@ -29,6 +29,8 @@ A sophisticated AI-powered chatbot for Sri Lanka Telecom (SLT) that provides int
 ### 🛠️ Technical Features
 - **Multiple LLM Providers**: Supports Ollama (local), LM Studio, and Groq (cloud)
 - **Automatic Fallback**: Falls back to cloud LLM if local models fail
+- **Backup Model Support**: Automatic fallback to backup model on rate limits with retry logic
+- **Rate Limit Handling**: Intelligent retry mechanism with exponential backoff for API rate limits
 - **Vector Database**: Zilliz Cloud (Milvus) for scalable vector storage
 - **PostgreSQL Integration**: Stores page metadata and version history
 - **Async Architecture**: High-performance async web crawling with crawl4ai
@@ -104,7 +106,7 @@ A sophisticated AI-powered chatbot for Sri Lanka Telecom (SLT) that provides int
 - **LLM Integration**: 
   - Ollama (local models)
   - LM Studio (local OpenAI-compatible)
-  - Groq API (cloud)
+  - Groq API (cloud with backup fallback support)
 - **Embeddings**: 
   - Sentence Transformers
   - FlagEmbedding (BGE-M3)
@@ -143,6 +145,7 @@ Before you begin, ensure you have the following installed:
 ### External Services
 - **Zilliz Cloud Account**: For vector database (or local Milvus installation)
 - **Groq API Key** (optional): For cloud LLM fallback
+- **Groq Backup API Key** (optional but recommended): For automatic fallback during rate limits
 - **Ollama** (optional): For local LLM inference
 
 ### System Dependencies
@@ -229,6 +232,7 @@ RERANK_MODEL=cross-encoder/ms-marco-MiniLM-L-6-v2
 
 # LLM Provider Configuration (optional)
 GROQ_API_KEY=your_groq_api_key_here
+GROQ_API_KEY_BACKUP=your_backup_groq_api_key_here
 
 # Application Settings
 EMBED_BATCH=32
@@ -370,15 +374,32 @@ This creates a basic `data/index.json` file with scraped content.
 2. Add to `.env`:
    ```bash
    GROQ_API_KEY=your_key_here
+   GROQ_API_KEY_BACKUP=your_backup_key_here  # Optional: for automatic fallback
    ```
 3. Update `llm_model.py`:
    ```python
    DEFAULT_CONFIG = {
        "provider": "groq",
-       "groq_model": "llama-3.3-70b-versatile",
+       "groq_model": "openai/gpt-oss-120b",
+       "backup_model": "openai/gpt-oss-120b",  # Model to use when rate limited
+       "max_retries": 3,  # Max retries for backup model
        ...
    }
    ```
+   
+   **Available Groq Models**: You can use any Groq-supported model such as:
+   - `openai/gpt-oss-120b` (default)
+   - `llama-3.3-70b-versatile`
+   - `qwen/qwen3-32b`
+
+**Backup Model Fallback**: The system automatically falls back to a backup model if the primary Groq API encounters rate limits (HTTP 429). The backup model:
+- Uses a separate API key (`GROQ_API_KEY_BACKUP`) with its own rate limit quota
+- Can use the same model (since rate limits are per API key) or a different model
+- Implements exponential backoff retry logic
+- Automatically retries up to `max_retries` times
+- Helps ensure continuous service availability during high traffic
+
+**Note**: Using the same model with a different API key is the default configuration, as rate limits apply per API key, not per model. This allows you to have separate rate limit quotas.
 
 ## 📚 API Documentation
 
@@ -469,6 +490,28 @@ curl http://localhost:11434/api/generate -d '{"model": "mistral", "prompt": "tes
 - Reduce batch size: `EMBED_BATCH=8`
 - Process fewer pages at once
 - Use lighter embedding model
+
+#### 8. Groq API Rate Limit Errors
+If you encounter rate limit errors (HTTP 429):
+- **Option 1**: Configure a backup API key:
+  ```bash
+  # In .env file
+  GROQ_API_KEY_BACKUP=your_backup_key_here
+  ```
+- **Option 2**: Adjust retry settings in `llm_model.py`:
+  ```python
+  DEFAULT_CONFIG = {
+      "max_retries": 5,  # Increase max retries
+      "wait_time": 3,    # Add delay before requests
+  }
+  ```
+- **Option 3**: Switch to a local LLM provider (Ollama or LM Studio)
+
+**How Backup Fallback Works**:
+1. Primary Groq API call fails with 429 (rate limit)
+2. System automatically switches to backup model using `GROQ_API_KEY_BACKUP`
+3. Backup model retries with exponential backoff (5s, 10s, 20s, etc.)
+4. If backup also fails after max retries, error is raised
 
 ### Debug Mode
 
