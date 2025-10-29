@@ -380,12 +380,17 @@ This creates a basic `data/index.json` file with scraped content.
    ```python
    DEFAULT_CONFIG = {
        "provider": "groq",
-       "groq_model": "llama-3.3-70b-versatile",
-       "backup_model": "llama-3.3-70b-versatile",  # Model to use when rate limited
+       "groq_model": "openai/gpt-oss-120b",
+       "backup_model": "openai/gpt-oss-120b",  # Model to use when rate limited
        "max_retries": 3,  # Max retries for backup model
        ...
    }
    ```
+   
+   **Available Groq Models**: You can use any Groq-supported model such as:
+   - `openai/gpt-oss-120b` (default)
+   - `llama-3.3-70b-versatile`
+   - `qwen/qwen3-32b`
 
 **Backup Model Fallback**: The system automatically falls back to a backup model if the primary Groq API encounters rate limits (HTTP 429). The backup model:
 - Uses a separate API key (`GROQ_API_KEY_BACKUP`)
