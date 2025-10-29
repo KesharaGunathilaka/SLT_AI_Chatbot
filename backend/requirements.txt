@@ -1,42 +1,29 @@
-geopy
-tqdm
-# pytesseract
-beautifulsoup4
-aiohttp
-# Pillow
-asyncpg
-crawl4ai
-pydantic
-groq
-#torch  
-setuptools<81
-
-
-# core
-# flask==3.0.3
-# flask-cors==4.0.1
-python-dotenv==1.0.1
-requests>=2.31.0
-
+#Backend runtime dependencies
 fastapi==0.115.0
 uvicorn[standard]==0.30.6
+python-dotenv==1.0.1
+requests>=2.31.0
+pydantic>=2.7,<3
 
-# embeddings + reranker
-# Use FlagEmbedding for bge-m3 + reranker; sentence-transformers for utilities
-FlagEmbedding==1.2.11
+# Async HTTP and parsing
+aiohttp
+beautifulsoup4
+crawl4ai
+
+# Database
+asyncpg
+
+# Vector store and search
+pymilvus
+rank-bm25
+
+# Embeddings and NLP
+numpy
 sentence-transformers
 transformers
 
-
-
-# tokenization / utils
-# numpy
-scikit-learn>=1.4.2
-
-# vectorize pipeline
-pymilvus
-langchain     # for the text splitters
-# uvloop  
+# LangChain ecosystem
+langchain
 langchain-huggingface
-
-semantic-text-splitter
+langchain-text-splitters
+langchain-experimental
