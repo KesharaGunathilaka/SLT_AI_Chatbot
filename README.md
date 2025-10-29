@@ -1,6 +1,6 @@
-# 🤖 SLT Chatbot with Local LLM
+# 🤖 SLT AI Chatbot
 
-A sophisticated AI-powered chatbot for Sri Lanka Telecom (SLT) that provides intelligent customer support using Retrieval-Augmented Generation (RAG) and local/cloud LLM integration. The system scrapes and indexes SLT website content, stores it in a vector database, and uses advanced semantic search with reranking to provide accurate, context-aware responses.
+AI-powered chatbot for Sri Lanka Telecom (SLT) that provides intelligent customer support using Retrieval-Augmented Generation (RAG) and local/cloud LLM integration. The system scrapes and indexes SLT website content, stores it in a vector database, and uses advanced semantic search with reranking to provide accurate, context-aware responses.
 
 ## 📋 Table of Contents
 
@@ -568,27 +568,19 @@ cd frontend
 npm run test
 ```
 
-## 📄 License
+## 👥 Team
 
-This project is licensed under the MIT License - see the LICENSE file for details.
-
-## 👥 Authors
-
-- **Keshara Gunathilaka** - Initial work
-
-## 🙏 Acknowledgments
-
-- Sri Lanka Telecom for public content
-- Ollama team for local LLM infrastructure
-- Zilliz for vector database
-- FastAPI and React communities
+- **Keshara Gunathilaka**
+- **Thinula Harishchandra**
+- **Randil Jayasinghe**
+- **Mevinu Gunarathna**
 
 ## 📞 Support
 
 For issues and questions:
 - Open an issue on GitHub
-- Email: [Your email]
-- Documentation: [Wiki/Docs link]
+- Email: [gpkhgunathilaka@gmail.com]
+- Documentation: Inside the Documents Folder
 
 ---
 
