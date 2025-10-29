@@ -10,7 +10,7 @@ import pytesseract
 from llm_ollama import query_ollama
 from tqdm import tqdm
 
-BASE_URL = "https://www.slt.lk/en/broadband/packages"
+BASE_URL = "https://slt.lk/index.php/en/broadband/packages"
 VISITED, DATA = set(), {}
 FAILED_IMAGES = set()
 MAX_DEPTH, TIMEOUT = 5, 300  # seconds
