@@ -1,0 +1,29 @@
+#Backend runtime dependencies
+fastapi==0.115.0
+uvicorn[standard]==0.30.6
+python-dotenv==1.0.1
+requests>=2.31.0
+pydantic>=2.7,<3
+
+# Async HTTP and parsing
+aiohttp
+beautifulsoup4
+crawl4ai
+
+# Database
+asyncpg
+
+# Vector store and search
+pymilvus
+rank-bm25
+
+# Embeddings and NLP
+numpy
+sentence-transformers
+transformers
+
+# LangChain ecosystem
+langchain
+langchain-huggingface
+langchain-text-splitters
+langchain-experimental
