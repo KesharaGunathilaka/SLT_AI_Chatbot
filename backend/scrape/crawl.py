@@ -1,17 +1,39 @@
 import asyncio
 import os
 import json
-from crawl4ai import AsyncWebCrawler, BrowserConfig, CrawlerRunConfig, CacheMode, LLMConfig, LLMContentFilter, DefaultMarkdownGenerator
+import aiohttp
+from bs4 import BeautifulSoup
+from crawl4ai import AsyncWebCrawler, BrowserConfig, CrawlerRunConfig, CacheMode, LLMConfig, LLMExtractionStrategy, LLMContentFilter, DefaultMarkdownGenerator
 from crawl4ai import JsonCssExtractionStrategy
 from dotenv import load_dotenv
-from crawl4ai import LLMExtractionStrategy
-from pydantic import BaseModel
 from typing import Optional
 
 load_dotenv()
 
+SITEMAP_URL = "https://slt.lk/en/sitemap"
 
-async def main():
+
+async def fetch_sitemap_urls():
+    urls = []
+    async with aiohttp.ClientSession() as session:
+        async with session.get(SITEMAP_URL) as resp:
+            html = await resp.text()
+
+    soup = BeautifulSoup(html, "html.parser")
+    for a in soup.find_all("a", href=True):
+        href = a["href"]
+        if href.startswith("http") and "slt.lk" in href:
+            urls.append(href)
+        elif href.startswith("/"):
+            urls.append("https://slt.lk" + href)
+
+    # Remove duplicates
+    urls = sorted(set(urls))
+    print(f"Found {len(urls)} pages in sitemap")
+    return urls
+
+
+async def crawl_urls(urls):
 
     # 1. Browser configuration
     browser_config = BrowserConfig(
@@ -20,36 +42,15 @@ async def main():
 
     # 2. LLM extraction strategy
     llm_strategy = LLMExtractionStrategy(
-        llm_config=LLMConfig(provider="groq/deepseek-r1-distill-llama-70b",
+        llm_config=LLMConfig(provider="groq/meta-llama/llama-4-scout-17b-16e-instruct",
                              api_token=os.getenv("GROQ_API_KEY")),
         extraction_type="schema",
 
-        #     instruction="""
-        #     Focus on extracting the *core package information* from the SLT PEO TV "Packages & Charges" page.
-
-        #                 Include:
-        #                 - Package name (e.g. PEO Lite, PEO Titanium)
-        #                 - Monthly rental
-        #                 - Installation or connection charges (if shown)
-        #                 - Any channel count or bundled features present (like number of channels)
-        #                 - Tariff names and TRC approval details (if in listing)
-        #                 - Validity (monthly, annual, etc.)
-        #                 - Any other key package details that are consistently formatted
-        #                 - information that is clearly structured in the page content
-
-        #                 Exclude:
-        #                 - All navigation, header, sidebar, footer, site menus, cookie notices
-        #                 - Advertisements or “Buy” buttons
-
-        #                 Output as clean Markdown:
-        #                 - Use headings like `## Package: PEO Lite`
-        #                 - Present each package as a section
-        #                 - Provide key fields in a bullet list
-        #                 - Wrap any code or tabular content in Markdown code blocks or tables
-        #                         """,
-
         verbose=True,
-        extra_args={"temperature": 0.0, "max_tokens": 2000}
+        chunk_token_threshold=1200,
+        overlap_rate=0.1,
+        apply_chunking=True,
+        extra_args={"temperature": 0.0, "max_tokens": 1000}
     )
 
     # 3) Crawler run config: skip cache, use extraction
@@ -69,33 +70,49 @@ async def main():
         # exclude_external_links=True,
     )
 
+    all_results = []
+
     async with AsyncWebCrawler(config=browser_config) as crawler:
 
-        url = "https://slt.lk/en/broadband/packages"
+        for i, url in enumerate(urls, 1):
+            print(f"[{i}/{len(urls)}] Crawling: {url}")
+            results = await crawler.arun(url=url, config=run_config)
 
-        result = await crawler.arun(
-            url=url,
-            config=run_config
-        )
+            for result in results:
+                if result.success:
+                    # Print clean content
+                    print("Content:", result.markdown)
+                    extracted = json.loads(result.extracted_content)
 
-        if result.success:
-            # Print clean content
-            print("Content:", result.markdown)
+                    all_results.append({
+                        "url": result.url,
+                        "content": result.markdown,
+                        "extracted_data": extracted
+                    })
 
-            with open("slt_data.md", "w", encoding="utf-8") as f:
-                f.write(result.markdown)
+                    with open("../data/slt_full_sitemap.json", "w", encoding="utf-8") as f:
+                        json.dump(all_results, f, indent=2, ensure_ascii=False)
+                        print(f"✅ Saved {len(all_results)} pages")
 
-            data = json.loads(result.extracted_content)
-            print("Extracted data:", json.dumps(data, indent=2))
+                    with open("slt_data.md", "w", encoding="utf-8") as f:
+                        f.write(result.markdown)
 
-            # Save to a JSON file
-            with open("../data/slt.json", "w", encoding="utf-8") as f:
-                json.dump(data, f, indent=2, ensure_ascii=False)
+                    data = json.loads(result.extracted_content)
+                    print("Extracted data:", json.dumps(data, indent=2))
 
-            llm_strategy.show_usage()
+                    # Save to a JSON file
+                    with open("../data/slt.json", "w", encoding="utf-8") as f:
+                        json.dump(data, f, indent=2, ensure_ascii=False)
 
-        else:
-            print(f"Crawl failed: {result.error_message}")
+                    llm_strategy.show_usage()
+
+                else:
+                    print(f"Crawl failed: {result.error_message}")
+
+
+async def main():
+    urls = await fetch_sitemap_urls()
+    await crawl_urls(urls)
 
 if __name__ == "__main__":
     asyncio.run(main())
