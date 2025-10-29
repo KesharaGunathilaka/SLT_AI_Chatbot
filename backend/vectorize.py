@@ -219,7 +219,7 @@ def delete_inactive_pages_from_milvus(collection, page_ids: list[str]):
 
     print(f" Found {len(page_ids)} inactive pages. Deleting from Milvus...")
 
-    # 🔹 Delete in batches for efficiency
+    # Delete in batches for efficiency
     batch_size = 100
     for i in range(0, len(page_ids), batch_size):
         batch = page_ids[i:i+batch_size]
@@ -314,7 +314,7 @@ async def main_loop(limit_each_run: int = 500):
     print("\n===== Starting Cleanup of Inactive Pages =====")
     inactive_page_ids = await get_inactive_page_ids(pool)
     delete_inactive_pages_from_milvus(collection, inactive_page_ids)
-    print("===== ✅ Cleanup Completed =====\n")
+    print("===== Cleanup Completed =====\n")
 
     # Step 2: Proceed with new vectorization
     try:
@@ -330,7 +330,7 @@ async def main_loop(limit_each_run: int = 500):
     finally:
         await pool.close()
     
-    print("===== ✅ Vectorization Completed =====")
+    print("===== Vectorization Completed =====")
     print(f"Total time: {time.time() - start:.2f} seconds")
     
 

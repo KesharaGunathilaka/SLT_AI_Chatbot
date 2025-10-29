@@ -25,5 +25,7 @@ transformers
 # LangChain ecosystem
 langchain
 langchain-huggingface
-langchain-text-splitters
-langchain-experimental
+langchain-community
+langchain-core
+langchain-experimental==0.3.4
+langchain-text-splitters==0.3.11
