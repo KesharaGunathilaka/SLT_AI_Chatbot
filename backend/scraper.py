@@ -16,6 +16,7 @@ BASE_URL = "https://slt.lk/index.php/en/broadband/packages"
 VISITED, DATA = set(), {}
 FAILED_IMAGES = set()
 
+
 MAX_DEPTH, TIMEOUT = 8, 3600  # seconds
 
 start_time = time.time()
