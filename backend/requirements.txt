@@ -6,6 +6,11 @@ pytesseract
 requests
 beautifulsoup4
 Pillow
+
+chromadb 
+sentence-transformers
+groq
+=======
 crawl4ai
 chromadb 
 sentence-transformers
@@ -17,3 +22,4 @@ nltk
 transformers 
 torch
 groq
+
