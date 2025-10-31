@@ -43,27 +43,27 @@ AI-powered chatbot for Sri Lanka Telecom (SLT) that provides intelligent custome
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                         Frontend                             │
-│                  (React + Vite + Tailwind)                   │
+│                         Frontend                            │
+│                  (React + Vite + Tailwind)                  │
 └─────────────────────┬───────────────────────────────────────┘
                       │ HTTP/REST
                       ▼
 ┌─────────────────────────────────────────────────────────────┐
-│                      Backend API                             │
-│                  (FastAPI + Uvicorn)                         │
+│                      Backend API                            │
+│                  (FastAPI + Uvicorn)                        │
 │  ┌──────────────────────────────────────────────────────┐   │
 │  │  • Query Processing                                  │   │
 │  │  • Context Assembly                                  │   │
-│  │  • LLM Integration (Ollama/Groq/LM Studio)          │   │
+│  │  • LLM Integration (Ollama/Groq/LM Studio)           │   │
 │  └──────────────────────────────────────────────────────┘   │
-└──────┬─────────────────────────────────┬───────────────────┘
+└──────┬──────────────────────────────────┬───────────────────┘
        │                                  │
        ▼                                  ▼
 ┌──────────────────┐            ┌─────────────────────┐
 │  Vector Database │            │    PostgreSQL       │
 │  (Zilliz/Milvus) │            │  (Page Metadata)    │
 │                  │            │                     │
-│  • BGE Model     │            │  • URLs             │
+│  • BGE-base      │            │  • URLs             │
 │  • Embeddings    │            │  • Categories       │
 │  • Similarity    │            │  • Versions         │
 │    Search        │            │  • Timestamps       │
@@ -73,16 +73,16 @@ AI-powered chatbot for Sri Lanka Telecom (SLT) that provides intelligent custome
        └──────────┬───────────────────────┘
                   │
 ┌─────────────────────────────────────────────────────────────┐
-│                  Data Pipeline                               │
+│                  Data Pipeline                              │
 │  ┌──────────────────────────────────────────────────────┐   │
 │  │  1. Crawler (crawl4ai)                               │   │
 │  │     • Async web scraping                             │   │
 │  │     • Markdown generation                            │   │
 │  │     • Page classification                            │   │
-│  │                                                       │   │
+│  │                                                      │   │
 │  │  2. Vectorizer                                       │   │
 │  │     • Text chunking (LangChain)                      │   │
-│  │     • BGE embeddings                              │   │
+│  │     • BGE-base embeddings                            │   │
 │  │     • Batch processing                               │   │
 │  └──────────────────────────────────────────────────────┘   │
 └─────────────────────────────────────────────────────────────┘
@@ -91,9 +91,9 @@ AI-powered chatbot for Sri Lanka Telecom (SLT) that provides intelligent custome
 ### Data Flow
 
 1. **Crawling**: Async web crawler fetches pages from slt.lk
-2. **Processing**: Content converted to markdown, classified and clean using llm
+2. **Processing**: Content converted to markdown, classified and cleaned using LLM
 3. **Storage**: Pages stored in PostgreSQL with metadata
-4. **Vectorization**: Content chunked and embedded using BGE model
+4. **Vectorization**: Content chunked and embedded using BGE-base (Sentence Transformers)
 5. **Indexing**: Vectors stored in Zilliz Cloud for similarity search
 6. **Query**: User questions embedded and matched against vector index
 7. **Retrieval**: Top-k results retrieved and reranked
@@ -148,8 +148,8 @@ Before you begin, ensure you have the following installed:
 ### 1. Clone the Repository
 
 ```bash
-git clone https://github.com/KesharaGunathilaka/SLT_Chatbot_Local_LLM.git
-cd SLT_Chatbot_Local_LLM
+git clone https://github.com/KesharaGunathilaka/SLT_AI_Chatbot
+cd SLT_AI_Chatbot
 ```
 
 ### 2. Backend Setup
@@ -187,7 +187,8 @@ DATABASE_URL=postgresql://user:password@localhost:5432/slt_chatbot
 # Zilliz Cloud / Milvus Configuration
 ZILLIZ_CLOUD_URI=https://your-cluster.zillizcloud.com
 ZILLIZ_CLOUD_API_KEY=your_api_key_here
-VECTOR_COLLECTION=slt_content
+# Vector collection (must be set for vectorizer; backend defaults to SLT_AI if unset)
+VECTOR_COLLECTION=SLT_AI
 
 # Embedding Model Configuration
 EMBEDDING_MODEL=BAAI/bge-base-en-v1.5

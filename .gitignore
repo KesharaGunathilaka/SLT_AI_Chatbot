@@ -6,6 +6,7 @@ env/
 #Data files
 data/
 test/
+documents/Private/
 
 # Other Python-related files to ignore
 __pycache__/
@@ -153,3 +154,4 @@ dist
 # Vite logs files
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
+

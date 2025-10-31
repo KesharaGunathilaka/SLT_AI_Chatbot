@@ -37,11 +37,11 @@ Before contributing, ensure you have:
 ```bash
 # Fork the repository on GitHub
 # Then clone your fork
-git clone https://github.com/YOUR_USERNAME/SLT_Chatbot_Local_LLM.git
-cd SLT_Chatbot_Local_LLM
+git clone https://github.com/KesharaGunathilaka/SLT_AI_Chatbot
+cd SLT_AI_Chatbot
 
 # Add upstream remote
-git remote add upstream https://github.com/KesharaGunathilaka/SLT_Chatbot_Local_LLM.git
+git remote add upstream https://github.com/KesharaGunathilaka/SLT_AI_Chatbot
 
 # Verify remotes
 git remote -v
@@ -401,8 +401,8 @@ Mockups, examples, or references
 
 ## 📞 Questions?
 
-- 💬 Open a [GitHub Discussion](https://github.com/KesharaGunathilaka/SLT_Chatbot_Local_LLM/discussions)
-- 🐛 Check existing [Issues](https://github.com/KesharaGunathilaka/SLT_Chatbot_Local_LLM/issues)
+- 💬 Open a [GitHub Discussion](https://github.com/KesharaGunathilaka/SLT_AI_Chatbot/discussions)
+- 🐛 Check existing [Issues](https://github.com/KesharaGunathilaka/SLT_AI_Chatbot/issues)
 - 📧 Contact maintainers
 
 ## 🎓 First Time Contributors

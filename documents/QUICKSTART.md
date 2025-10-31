@@ -5,7 +5,7 @@ Get the SLT Chatbot up and running in minutes!
 ## Prerequisites Check
 
 ```bash
-# Check Python version (need 3.9+)
+# Check Python version (need 3.12+)
 python3 --version
 
 # Check Node.js version (need 18+)
@@ -24,8 +24,8 @@ psql --version
 
 ```bash
 # Clone repository
-git clone https://github.com/KesharaGunathilaka/SLT_Chatbot_Local_LLM.git
-cd SLT_Chatbot_Local_LLM
+git clone https://github.com/KesharaGunathilaka/SLT_AI_Chatbot
+cd SLT_AI_Chatbot
 
 # Setup backend
 cd backend
@@ -85,13 +85,11 @@ npm run dev
 
 - **Frontend**: http://localhost:5173
 - **Backend API**: http://localhost:8000
-- **API Docs**: http://localhost:8000/docs (if enabled)
 
 ## Quick Test
 
 Open your browser to http://localhost:5173 and try:
 - "What are the broadband packages?"
-- "Find SLT branches near me"
 - "How do I contact customer support?"
 
 ## Using Local LLM (Optional)
@@ -100,12 +98,12 @@ Open your browser to http://localhost:5173 and try:
 
 ```bash
 # Install Ollama from https://ollama.ai
-ollama pull mistral
+ollama pull llama3.1
 
 # Update backend/llm_model.py:
 # DEFAULT_CONFIG = {
 #     "provider": "ollama",
-#     "ollama_model": "mistral",
+#     "ollama_model": "llama3.1",
 #     ...
 # }
 ```
@@ -125,23 +123,10 @@ ollama pull mistral
 
 ## Troubleshooting Quick Fixes
 
-### Backend won't start
-```bash
-# Check if port 8000 is in use
-lsof -i :8000  # Linux/Mac
-netstat -ano | findstr :8000  # Windows
-
-# Check logs
-tail -f backend/logs/*.log
-```
-
 ### Frontend won't connect
 ```bash
 # Verify backend is running
 curl http://localhost:8000/
-
-# Check frontend config
-cat frontend/vite.config.js
 ```
 
 ### Database errors
