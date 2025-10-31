@@ -1,6 +1,6 @@
 # 🤖 SLT AI Chatbot
 
-AI-powered chatbot for Sri Lanka Telecom (SLT) that provides intelligent customer support using Retrieval-Augmented Generation (RAG) and local/cloud LLM integration. The system scrapes and indexes SLT website content, stores it in a vector database, and uses advanced semantic search with reranking to provide accurate, context-aware responses.
+AI-powered chatbot for Sri Lanka Telecom (SLT) that provides intelligent customer support using Retrieval-Augmented Generation (RAG) and local/cloud LLM integration. The system scrapes and indexes SLT website content, stores it in a vector database, and uses hybrid search with optional reranking to provide accurate, context-aware responses.
 
 ## 📋 Table of Contents
 
@@ -11,24 +11,25 @@ AI-powered chatbot for Sri Lanka Telecom (SLT) that provides intelligent custome
 - [Installation](#-installation)
 - [Configuration](#-configuration)
 - [Usage](#-usage)
-- [API Documentation](#-api-documentation)
+- [API Overview](#-api-overview)
 - [Troubleshooting](#-troubleshooting)
 - [Contributing](#-contributing)
 
 ## ✨ Features
 
 ### 🎯 Core Capabilities
-- **Intelligent Q&A**: Answers questions about SLT services, packages, and technical support
-- **Branch Locator**: Finds nearest SLT branches based on user location
-- **Multi-Source Data**: Scrapes and indexes content from SLT website with OCR support
-- **Vector Search**: Semantic search with BGE-M3 embeddings (1024 dimensions)
-- **Smart Reranking**: Uses cross-encoder models for improved result relevance
+- **Intelligent Q&A**: Answers questions about SLT services, packages, and support
+- **Multi-Source Data**: Scrapes and indexes content from the SLT website
+- **Hybrid Search**: Dense vector search (Milvus/Zilliz) + BM25 keyword search
+- **Embeddings**: Default `BAAI/bge-base-en-v1.5` (768-dim), configurable
+- **Smart Reranking (optional)**: `BAAI/bge-reranker-base` via FlagEmbedding or CrossEncoder
+- **Multi-Query Expansion (optional)**: Expands queries to improve recall
 - **Context-Aware**: Maintains conversation context for follow-up questions
-- **Real-time Updates**: Dynamic content fetching and indexing
+- **Real-time Updates**: Crawl and re-vectorize content as needed
 
 ### 🛠️ Technical Features
 - **Multiple LLM Providers**: Supports Ollama (local), LM Studio, and Groq (cloud)
-- **Automatic Fallback**: Falls back to cloud LLM if local models fail
+- **Automatic Fallback**: Falls back to cloud LLM if given LLM models fail
 - **Backup Model Support**: Automatic fallback to backup model on rate limits with retry logic
 - **Rate Limit Handling**: Intelligent retry mechanism with exponential backoff for API rate limits
 - **Vector Database**: Zilliz Cloud (Milvus) for scalable vector storage
@@ -62,7 +63,7 @@ AI-powered chatbot for Sri Lanka Telecom (SLT) that provides intelligent custome
 │  Vector Database │            │    PostgreSQL       │
 │  (Zilliz/Milvus) │            │  (Page Metadata)    │
 │                  │            │                     │
-│  • BGE-M3        │            │  • URLs             │
+│  • BGE Model     │            │  • URLs             │
 │  • Embeddings    │            │  • Categories       │
 │  • Similarity    │            │  • Versions         │
 │    Search        │            │  • Timestamps       │
@@ -81,7 +82,7 @@ AI-powered chatbot for Sri Lanka Telecom (SLT) that provides intelligent custome
 │  │                                                       │   │
 │  │  2. Vectorizer                                       │   │
 │  │     • Text chunking (LangChain)                      │   │
-│  │     • BGE-M3 embeddings                              │   │
+│  │     • BGE embeddings                              │   │
 │  │     • Batch processing                               │   │
 │  └──────────────────────────────────────────────────────┘   │
 └─────────────────────────────────────────────────────────────┘
@@ -90,9 +91,9 @@ AI-powered chatbot for Sri Lanka Telecom (SLT) that provides intelligent custome
 ### Data Flow
 
 1. **Crawling**: Async web crawler fetches pages from slt.lk
-2. **Processing**: Content converted to markdown, classified by category
+2. **Processing**: Content converted to markdown, classified and clean using llm
 3. **Storage**: Pages stored in PostgreSQL with metadata
-4. **Vectorization**: Content chunked and embedded using BGE-M3
+4. **Vectorization**: Content chunked and embedded using BGE model
 5. **Indexing**: Vectors stored in Zilliz Cloud for similarity search
 6. **Query**: User questions embedded and matched against vector index
 7. **Retrieval**: Top-k results retrieved and reranked
@@ -103,21 +104,20 @@ AI-powered chatbot for Sri Lanka Telecom (SLT) that provides intelligent custome
 ### Backend
 - **Framework**: FastAPI 0.115.0
 - **Server**: Uvicorn (with uvloop for performance)
-- **LLM Integration**: 
+- **LLM Integration**:
   - Ollama (local models)
   - LM Studio (local OpenAI-compatible)
   - Groq API (cloud with backup fallback support)
-- **Embeddings**: 
-  - Sentence Transformers
-  - FlagEmbedding (BGE-M3)
-- **Vector DB**: Zilliz Cloud / Milvus (pymilvus 2.5.3)
+- **Embeddings**:
+  - Sentence Transformers (default: `BAAI/bge-base-en-v1.5`, 768-dim)
+- **Reranking**:
+  - Optional reranker: `BAAI/bge-reranker-base` (FlagEmbedding or CrossEncoder)
+- **Vector DB**: Zilliz Cloud / Milvus (pymilvus)
 - **Database**: PostgreSQL (asyncpg)
-- **Web Scraping**: 
+- **Web Scraping**:
   - crawl4ai (async crawler)
   - BeautifulSoup4
-  - aiohttp
 - **Text Processing**: LangChain (text splitters)
-- **Geolocation**: geopy
 
 ### Frontend
 - **Framework**: React 19.1.0
@@ -125,11 +125,6 @@ AI-powered chatbot for Sri Lanka Telecom (SLT) that provides intelligent custome
 - **Styling**: Tailwind CSS 4.1.11
 - **Icons**: Lucide React
 - **Markdown**: react-markdown with remark-gfm
-
-### DevOps
-- **Language**: Python 3.x, JavaScript (ES2020+)
-- **Package Managers**: pip, npm
-- **Linting**: ESLint
 
 ## 📦 Prerequisites
 
@@ -144,19 +139,9 @@ Before you begin, ensure you have the following installed:
 
 ### External Services
 - **Zilliz Cloud Account**: For vector database (or local Milvus installation)
-- **Groq API Key** (optional): For cloud LLM fallback
-- **Groq Backup API Key** (optional but recommended): For automatic fallback during rate limits
 - **Ollama** (optional): For local LLM inference
-
-### System Dependencies
-```bash
-# For Ubuntu/Debian
-sudo apt-get update
-sudo apt-get install -y python3-pip python3-venv postgresql-client
-
-# For macOS (using Homebrew)
-brew install python postgresql
-```
+- **Groq API Key** (optional): For cloud LLM
+- **Groq Backup API Key** (optional but recommended): For automatic fallback during rate limits
 
 ## 🚀 Installation
 
@@ -172,7 +157,7 @@ cd SLT_Chatbot_Local_LLM
 #### Create Virtual Environment
 ```bash
 cd backend
-python3 -m venv venv
+python3 -m venv venv # Recommend python 3.12+
 source venv/bin/activate  # On Windows: venv\Scripts\activate
 ```
 
@@ -180,18 +165,6 @@ source venv/bin/activate  # On Windows: venv\Scripts\activate
 ```bash
 pip install --upgrade pip
 pip install -r requirements.txt
-```
-
-#### Install Tesseract (for OCR - optional)
-```bash
-# Ubuntu/Debian
-sudo apt-get install tesseract-ocr
-
-# macOS
-brew install tesseract
-
-# Windows
-# Download from: https://github.com/UB-Mannheim/tesseract/wiki
 ```
 
 ### 3. Frontend Setup
@@ -217,25 +190,42 @@ ZILLIZ_CLOUD_API_KEY=your_api_key_here
 VECTOR_COLLECTION=slt_content
 
 # Embedding Model Configuration
-EMBEDDING_MODEL=BAAI/bge-m3
-EMBEDDING_DIM=1024
-EMBED_QUERY_PREFIX=
+EMBEDDING_MODEL=BAAI/bge-base-en-v1.5
+EMBEDDING_DIM=768
 
-# Retrieval Configuration
-SEARCH_TOP_K=20
-CONTEXT_CHUNKS=4
-SCORE_THRESHOLD_IP=0.2
+# Embedding batch size (vectorization)
+EMBED_BATCH=32
+
+# Retrieval / Scoring Configuration
+SEARCH_TOP_K=30
+CONTEXT_CHUNKS=5
+SCORE_THRESHOLD_IP=0.25
 PRIORITY_BONUS=0.001
-RECENCY_BONUS_HALF_LIFE_DAYS=90
+RECENCY_BONUS=0.03
+RECENCY_BONUS_HALF_LIFE_DAYS=60
+
+# Reranking
 ENABLE_RERANK=true
-RERANK_MODEL=cross-encoder/ms-marco-MiniLM-L-6-v2
+RERANK_MODEL=BAAI/bge-reranker-base
+RERANK_TOP_K=20
+
+# Multi-Query Expansion (optional)
+ENABLE_MQE=true
+MQE_QUERIES=2
 
 # LLM Provider Configuration (optional)
 GROQ_API_KEY=your_groq_api_key_here
 GROQ_API_KEY_BACKUP=your_backup_groq_api_key_here
 
-# Application Settings
-EMBED_BATCH=32
+```
+
+### Frontend Environment Variables
+
+Create `frontend/.env.local` with the backend API URL you use during development:
+
+```bash
+# If you start backend on port 8000 (recommended via uvicorn)
+VITE_FRONTEND_API_URL=http://localhost:8000
 ```
 
 ### Database Initialization
@@ -272,7 +262,7 @@ python crawl.py
 This will:
 - Crawl pages starting from the SLT sitemap
 - Extract and clean content
-- Classify pages by category (broadband, mobile, support, etc.)
+- Classify pages by category
 - Store pages in PostgreSQL
 - Save raw markdown files to `./data/crawl/`
 
@@ -292,7 +282,7 @@ python vectorize.py
 This will:
 - Load pages from PostgreSQL
 - Split content into chunks (1000 chars, 200 overlap)
-- Generate embeddings using BGE-M3
+- Generate embeddings using BGE
 - Store vectors in Zilliz Cloud
 - Mark pages as vectorized
 
@@ -303,14 +293,20 @@ This will:
 
 ### Step 3: Start Backend API
 
+Option A — Recommended (uvicorn on port 8000):
+
 ```bash
 # Make sure you're in the backend directory with venv activated
 uvicorn app:app --host 0.0.0.0 --port 8000 --reload
 ```
 
-The API will be available at: `http://localhost:8000`
+Option B — Run the module directly (defaults to port 8000):
 
-**Health Check**: Visit `http://localhost:8000/` to verify the API is running
+```bash
+python app.py
+```
+
+Set `VITE_FRONTEND_API_URL` to match the port you choose (see Frontend env vars above).
 
 ### Step 4: Start Frontend
 
@@ -323,18 +319,8 @@ npm run dev
 
 The frontend will be available at: `http://localhost:5173`
 
-**Note**: The frontend is configured to connect to the backend on port 8000.
+Note: The frontend uses `VITE_FRONTEND_API_URL` to reach the backend. Ensure it matches your backend port.
 
-### Alternative: Simple Scraper (Legacy)
-
-For simple scraping without vectorization:
-
-```bash
-cd backend
-python scraper.py
-```
-
-This creates a basic `data/index.json` file with scraped content.
 
 ## 🔧 Running with Different LLM Providers
 
@@ -343,14 +329,13 @@ This creates a basic `data/index.json` file with scraped content.
 1. Install Ollama from [ollama.ai](https://ollama.ai)
 2. Pull a model:
    ```bash
-   ollama pull mistral
    ollama pull llama3.1
    ```
 3. Update `llm_model.py` default config:
    ```python
    DEFAULT_CONFIG = {
        "provider": "ollama",
-       "ollama_model": "mistral",
+       "ollama_model": "llama3.1",
        ...
    }
    ```
@@ -390,7 +375,6 @@ This creates a basic `data/index.json` file with scraped content.
    **Available Groq Models**: You can use any Groq-supported model such as:
    - `openai/gpt-oss-120b` (default)
    - `llama-3.3-70b-versatile`
-   - `qwen/qwen3-32b`
 
 **Backup Model Fallback**: The system automatically falls back to a backup model if the primary Groq API encounters rate limits (HTTP 429). The backup model:
 - Uses a separate API key (`GROQ_API_KEY_BACKUP`) with its own rate limit quota
@@ -401,23 +385,9 @@ This creates a basic `data/index.json` file with scraped content.
 
 **Note**: Using the same model with a different API key is the default configuration, as rate limits apply per API key, not per model. This allows you to have separate rate limit quotas.
 
-## 📚 API Documentation
+## 📚 API Overview
 
-### Main Endpoints
-
-#### Health Check
-```http
-GET /
-```
-
-**Response:**
-```json
-{
-  "status": "ok",
-  "message": "SLT Chatbot API is running",
-  "timestamp": "2025-10-12T18:23:11.855Z"
-}
-```
+### Main Endpoint
 
 #### Chat
 ```http
@@ -429,21 +399,19 @@ Content-Type: application/json
 }
 ```
 
-**Response:**
+**Response (example):**
 ```json
 {
   "reply": "Here are the SLT broadband packages:\n\n📦 **Fiber Packages:**\n- Entry: 20 Mbps - Rs. 1,690/month\n- Family: 40 Mbps - Rs. 2,490/month\n- Premium: 100 Mbps - Rs. 4,990/month\n\n[More details](https://www.slt.lk/en/broadband/packages)"
 }
 ```
 
-### Query Parameters
-
-The chat endpoint uses semantic search with the following flow:
-1. Embed query using BGE-M3
-2. Search vector database (top-k=20)
-3. Rerank results using cross-encoder
-4. Select top 4 chunks
-5. Generate response using LLM
+### Retrieval flow (high level)
+1. Embed query using the configured SentenceTransformer model (default bge-base)
+2. Hybrid search: vector search (Milvus) + BM25 keyword search
+3. Optional Multi-Query Expansion to broaden recall
+4. Optional reranking using a cross-encoder/FlagEmbedding model
+5. Select top chunks and generate a response with the chosen LLM
 
 ## 🐛 Troubleshooting
 
@@ -477,9 +445,9 @@ curl http://localhost:11434/api/generate -d '{"model": "mistral", "prompt": "tes
 ```
 
 #### 5. Frontend Can't Connect to Backend
-- Ensure backend is running on port 8000
-- Check CORS settings in `app.py`
-- Verify frontend is configured for correct backend URL
+- Ensure the backend is running (8000 if using uvicorn or if using `python app.py`)
+- Check CORS settings in `backend/app.py`
+- Verify `frontend/.env.local` sets `VITE_FRONTEND_API_URL` to the correct backend URL
 
 #### 6. Embeddings Taking Too Long
 - Reduce `SEARCH_TOP_K` in `.env`
@@ -502,7 +470,7 @@ If you encounter rate limit errors (HTTP 429):
   ```python
   DEFAULT_CONFIG = {
       "max_retries": 5,  # Increase max retries
-      "wait_time": 3,    # Add delay before requests
+      "wait_time": 20,    # Add delay before requests
   }
   ```
 - **Option 3**: Switch to a local LLM provider (Ollama or LM Studio)
@@ -512,16 +480,6 @@ If you encounter rate limit errors (HTTP 429):
 2. System automatically switches to backup model using `GROQ_API_KEY_BACKUP`
 3. Backup model retries with exponential backoff (5s, 10s, 20s, etc.)
 4. If backup also fails after max retries, error is raised
-
-### Debug Mode
-
-Enable debug logging:
-
-```python
-# In app.py
-import logging
-logging.basicConfig(level=logging.DEBUG)
-```
 
 ### Check System Status
 
@@ -543,30 +501,12 @@ Contributions are welcome! Please follow these guidelines:
 ### Development Workflow
 
 1. Fork the repository
-2. Create a feature branch: `git checkout -b feature/amazing-feature`
+2. Create a feature branch: `git checkout -b feature/your-feature`
 3. Make your changes
 4. Test thoroughly
-5. Commit: `git commit -m 'Add amazing feature'`
-6. Push: `git push origin feature/amazing-feature`
+5. Commit: `git commit -m 'Add your feature'`
+6. Push: `git push origin feature/your-feature`
 7. Open a Pull Request
-
-### Code Style
-
-- **Python**: Follow PEP 8
-- **JavaScript**: Follow ESLint configuration
-- **Commits**: Use conventional commits format
-
-### Testing
-
-```bash
-# Backend
-cd backend
-python -m pytest
-
-# Frontend
-cd frontend
-npm run test
-```
 
 ## 👥 Team
 
