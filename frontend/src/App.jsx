@@ -10,7 +10,7 @@ const SLTChatbot = () => {
   const [messages, setMessages] = useState([
     {
       id: 1,
-      text: "👋 Hello! I'm your SLT assistant. I can help you with:\n\n🌐 Internet packages and broadband plans\n📍 Finding nearest SLT branches\n📞 Technical support information\n💰 Pricing and service details\n\nHow can I help you today?",
+      text: "👋 Hello! I'm your SLT assistant. I can help you with:\n\n🌐 Internet packages and broadband plans\n\n 📞 Technical support information\n\n 💰 Pricing and service details\n\nHow can I help you today?",
       sender: 'bot',
       timestamp: new Date()
     }
@@ -78,7 +78,7 @@ const SLTChatbot = () => {
     } catch (error) {
       const errorMessage = {
         id: messages.length + 2,
-        text: `❌ Connection error: ${error.message}. Please make sure the backend server is running on port 5000.`,
+        text: `❌ Connection error: ${error.message}. Please make sure the backend server is running on port 8000.`,
         sender: 'bot',
         timestamp: new Date()
       };
@@ -93,16 +93,6 @@ const SLTChatbot = () => {
       e.preventDefault();
       sendMessage();
     }
-  };
-
-  const quickQuestions = [
-    "Find SLT branches near me",
-    "What are the broadband packages?",
-    "How to contact customer support?"
-  ];
-
-  const handleQuickQuestion = (question) => {
-    setInputMessage(question);
   };
 
   return (
@@ -126,7 +116,7 @@ const SLTChatbot = () => {
       <div className="max-w-4xl mx-auto px-4 py-6">
         <div className="bg-white rounded-2xl shadow-xl overflow-hidden">
           {/* Messages Area */}
-          <div className="h-[600px] overflow-y-auto p-6 space-y-4 bg-gray-50">
+          <div className="h-[420px] overflow-y-auto p-6 space-y-4 bg-gray-50">
             {messages.map((message) => (
               <div
                 key={message.id}
@@ -214,21 +204,6 @@ const SLTChatbot = () => {
             <div ref={messagesEndRef} />
           </div>
 
-          {/* Quick Questions */}
-          <div className="px-6 py-4 bg-white border-t border-gray-200">
-            <div className="flex flex-wrap gap-2">
-              {quickQuestions.map((question, index) => (
-                <button
-                  key={index}
-                  onClick={() => handleQuickQuestion(question)}
-                  className="px-3 py-2 text-sm bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg transition-colors duration-200"
-                >
-                  {question}
-                </button>
-              ))}
-            </div>
-          </div>
-
           {/* Input Area */}
           <div className="p-6 bg-white border-t border-gray-200">
             <div className="flex space-x-4">
@@ -237,7 +212,7 @@ const SLTChatbot = () => {
                   value={inputMessage}
                   onChange={(e) => setInputMessage(e.target.value)}
                   onKeyPress={handleKeyPress}
-                  placeholder="Ask me about SLT services, broadband, or find branches..."
+                  placeholder="Ask me about SLT services..."
                   className="w-full px-4 py-3 pr-12 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-none"
                   rows="2"
                   disabled={isLoading}
