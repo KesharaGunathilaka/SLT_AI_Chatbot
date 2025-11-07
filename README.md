@@ -250,6 +250,11 @@ This will:
 
 ## 📖 Usage
 
+### Run Local LLM
+```bash
+ollama run llama3.1  # or mistral (imported model)
+```
+
 ### Step 1: Crawl SLT Website
 
 The crawler fetches and processes content from the SLT website:
@@ -341,20 +346,7 @@ Note: The frontend uses `VITE_FRONTEND_API_URL` to reach the backend. Ensure it 
    }
    ```
 
-### Option 2: LM Studio (Local)
-
-1. Install [LM Studio](https://lmstudio.ai/)
-2. Load a model and start the server (port 1234)
-3. Update `llm_model.py`:
-   ```python
-   DEFAULT_CONFIG = {
-       "provider": "lmstudio",
-       "lmstudio_model": "openai/gpt-oss-20b",
-       ...
-   }
-   ```
-
-### Option 3: Groq (Cloud)
+### Option 2: Groq (Cloud)
 
 1. Get API key from [Groq](https://console.groq.com/)
 2. Add to `.env`:

@@ -10,7 +10,7 @@ GROQ_API_KEY_BACKUP = os.getenv("GROQ_API_KEY_BACKUP")
 
 # Default configuration
 DEFAULT_CONFIG = {
-    "provider": "groq",  # options: "ollama", "lmstudio", "groq"
+    "provider": "ollama",  # options: "ollama", "lmstudio", "groq"
     "ollama_model": "mistral",
     "lmstudio_model": "openai/gpt-oss-20b",
     "groq_model": "openai/gpt-oss-120b",
@@ -21,7 +21,7 @@ DEFAULT_CONFIG = {
     "temperature": 0.1,
     "wait_time": 2,   # seconds to wait before any LLM request
     "max_retries": 3,  # max retries for rate limit (429)
-    "fallback_to_cloud_llm": True
+    "fallback_to_cloud_llm": False
 }
 
 
