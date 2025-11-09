@@ -68,7 +68,7 @@ app.add_middleware(
 async def startup_event():
     # connect and load collection (guard with try/except)
     try:
-        connections.connect(alias="default", uri=URI, token=TOKEN)
+        connections.connect(alias="default", host="localhost", port="19530")
         global collection
         collection = Collection(COLLECTION_NAME)
         collection.load()

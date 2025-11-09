@@ -76,19 +76,12 @@ Size_Splitter = RecursiveCharacterTextSplitter(
 
 #Milvus connection
 def connect_milvus():
-    uri = URI
-    token = TOKEN
-
-    if not uri or not token:
-        raise ValueError(
-            "Missing ZILLIZ_CLOUD_URI or ZILLIZ_CLOUD_API_KEY environment variables")
-
     connections.connect(
         alias="default",
-        uri=uri,
-        token=token,
+        host="localhost",
+        port="19530"
     )
-    print(f"✅ Connected to Zilliz Cloud at {uri}")
+    print("✅ Connected to Local Milvus at localhost:19530")
 
 
 def create_collection_if_not_exists():
