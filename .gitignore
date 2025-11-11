@@ -5,7 +5,7 @@ env/
 
 #Data files
 data/
-milvus/
+volumes/
 test/
 documents/Private/
 

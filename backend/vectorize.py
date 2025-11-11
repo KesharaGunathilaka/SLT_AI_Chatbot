@@ -12,10 +12,6 @@ from pymilvus import (connections, FieldSchema, CollectionSchema, DataType, Coll
 # Postgres connection settings
 DATABASE_URL = os.getenv("DATABASE_URL")
 
-# Zilliz Cloud / Milvus connection settings
-URI = os.getenv("ZILLIZ_CLOUD_URI")
-TOKEN = os.getenv("ZILLIZ_CLOUD_API_KEY")
-
 COLLECTION_NAME = os.getenv("VECTOR_COLLECTION")
 EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "BAAI/bge-base-en-v1.5")
 EMBEDDING_DIM = int(os.getenv("EMBEDDING_DIM", "768"))

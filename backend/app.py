@@ -28,8 +28,6 @@ except Exception:
 
 
 # CONFIG
-URI = os.getenv("ZILLIZ_CLOUD_URI")
-TOKEN = os.getenv("ZILLIZ_CLOUD_API_KEY")
 COLLECTION_NAME = os.getenv("VECTOR_COLLECTION", "SLT_AI")
 
 EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "BAAI/bge-base-en-v1.5")

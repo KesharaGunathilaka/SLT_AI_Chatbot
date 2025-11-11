@@ -1,0 +1,3 @@
+# Extra config to override default milvus.yaml
+address: 127.0.0.1
+port: 19530
