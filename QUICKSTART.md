@@ -4,17 +4,18 @@ Get the SLT Chatbot up and running in minutes!
 
 ## Prerequisites Check
 
-```bash
-# Check Python version (need 3.12+)
-python3 --version
+```powershell
+# Check Python (3.12+ recommended)
+python --version
 
-# Check Node.js version (need 18+)
+# Check Node.js (18+)
 node --version
-
-# Check npm version
 npm --version
 
-# Check PostgreSQL
+# Check Docker Desktop (must be running)
+docker --version
+
+# Check PostgreSQL client
 psql --version
 ```
 
@@ -22,69 +23,120 @@ psql --version
 
 ### 1. Clone and Setup
 
-```bash
+```powershell
 # Clone repository
 git clone https://github.com/KesharaGunathilaka/SLT_AI_Chatbot
 cd SLT_AI_Chatbot
 
-# Setup backend
+# Backend setup
 cd backend
-python3 -m venv venv
-source venv/bin/activate  # Windows: venv\Scripts\activate
+python -m venv .venv
+./venv/Scripts/Activate
+pip install --upgrade pip
 pip install -r requirements.txt
 
-# Setup frontend
+# Frontend setup
 cd ../frontend
 npm install
 ```
 
-### 2. Configure Environment
+### 2. Start Milvus (Docker, Standalone)
 
-```bash
-cd ../backend
-cp .env.example .env
-# Edit .env with your credentials:
-# - DATABASE_URL (PostgreSQL connection string)
-# - ZILLIZ_CLOUD_URI and ZILLIZ_CLOUD_API_KEY (from Zilliz Cloud)
-# - GROQ_API_KEY (optional, from Groq console)
+Milvus must listen on localhost:19530 (the backend is pre-configured for this).
+
+Option A — If this repository contains a helper script (milvus/standalone.bat):
+```powershell
+./milvus/standalone.bat start
 ```
 
-### 3. Initialize Database
+Option B — Single Docker container (persistent volume):
+```powershell
+# Pull latest stable Milvus image (2.4+)
+docker pull milvusdb/milvus:latest
 
-```bash
-# Still in backend directory with venv activated
+# Start standalone Milvus with embedded dependencies
+docker run -d --name milvus-standalone `
+	-p 19530:19530 -p 9091:9091 `
+	-v milvus_data:/var/lib/milvus `
+	-e ETCD_USE_EMBED=true -e MINIO_USE_EMBED=true `
+	milvusdb/milvus:latest
+
+# Verify it's up
+docker ps --filter "name=milvus-standalone"
+```
+
+Health check from Python:
+```powershell
+python -c "from pymilvus import connections; connections.connect(host='localhost', port='19530'); print('Milvus OK')"
+```
+
+### 3. Configure environment
+
+Create a `.env` file inside `backend`:
+
+```powershell
+@"
+# PostgreSQL (adjust to your local DB)
+DATABASE_URL=postgresql://user:password@localhost:5432/slt_chatbot
+
+# Vector DB
+VECTOR_COLLECTION=SLT_AI
+
+# Embeddings
+EMBEDDING_MODEL=BAAI/bge-base-en-v1.5
+EMBEDDING_DIM=768
+
+# Retrieval and ranking
+SEARCH_TOP_K=30
+CONTEXT_CHUNKS=5
+SCORE_THRESHOLD_IP=0.25
+ENABLE_RERANK=true
+RERANK_MODEL=BAAI/bge-reranker-base
+RERANK_TOP_K=20
+"@
+```
+
+Notes:
+- Milvus host/port are hard-coded to `localhost:19530` in the backend. If you change ports, update `backend/app.py` and `backend/vectorize.py` accordingly.
+- PostgreSQL stores page metadata; Milvus stores vectors.
+
+### 4. Initialize PostgreSQL
+
+```powershell
+cd ../backend
+./venv/Scripts/Activate
 python db_init.py
 ```
 
-### 4. Crawl and Vectorize (First Time Only)
+### 5. Crawl and vectorize (First Run)
 
-```bash
-# Crawl SLT website (takes 5-10 minutes)
+```powershell
+# Crawl SLT website
 python crawl.py
 
-# Vectorize content (takes 10-15 minutes)
+# Create embeddings and push to Milvus
 python vectorize.py
 ```
 
-### 5. Start Services
+### 6. Start services
 
-**Terminal 1 - Backend:**
-```bash
+Terminal 1 — Backend API:
+```powershell
 cd backend
-source venv/bin/activate
+./venv/Scripts/Activate
 uvicorn app:app --host 0.0.0.0 --port 8000 --reload
 ```
 
-**Terminal 2 - Frontend:**
-```bash
+Terminal 2 — Frontend:
+```powershell
 cd frontend
 npm run dev
 ```
 
-### 6. Access the Application
+### 7. Access the Application
 
-- **Frontend**: http://localhost:5173
-- **Backend API**: http://localhost:8000
+- Frontend: http://localhost:5173
+- Backend:  http://localhost:8000
 
 ## Quick Test
 
@@ -94,11 +146,10 @@ Open your browser to http://localhost:5173 and try:
 
 ## Using Local LLM (Optional)
 
-### With Ollama
-
-```bash
-# Install Ollama from https://ollama.ai
-ollama pull llama3.1
+### Ollama
+```powershell
+# Install from https://ollama.ai
+ollama pull llama3.1 #prefered model
 
 # Update backend/llm_model.py:
 # DEFAULT_CONFIG = {
@@ -108,39 +159,25 @@ ollama pull llama3.1
 # }
 ```
 
-### With LM Studio
-
-```bash
-# 1. Download and install LM Studio from https://lmstudio.ai
-# 2. Load a model (e.g., Mistral 7B)
-# 3. Start local server on port 1234
-# 4. Update backend/llm_model.py:
-# DEFAULT_CONFIG = {
-#     "provider": "lmstudio",
-#     ...
-# }
-```
-
 ## Troubleshooting Quick Fixes
 
-### Frontend won't connect
-```bash
-# Verify backend is running
+- Frontend can’t connect
+```powershell
 curl http://localhost:8000/
 ```
 
-### Database errors
-```bash
-# Reinitialize database
-cd backend
-source venv/bin/activate
-python db_init.py
+- PostgreSQL issues
+```powershell
+python db_init.py  # re-create tables
 ```
 
-### Vector search not working
-```bash
-# Check Zilliz connection
-python -c "from pymilvus import connections; connections.connect(uri='YOUR_URI', token='YOUR_TOKEN'); print('Connected!')"
+- Milvus/vector search not working
+```powershell
+# Check container
+docker logs --tail 100 milvus-standalone
+
+# Test connection
+python -c "from pymilvus import connections; connections.connect(host='localhost', port='19530'); print('Milvus OK')"
 
 # Re-run vectorization
 python vectorize.py
@@ -150,7 +187,7 @@ python vectorize.py
 
 For development with hot reload:
 
-```bash
+```powershell
 # Backend (auto-reload on code changes)
 uvicorn app:app --reload --host 0.0.0.0 --port 8000
 
@@ -160,18 +197,18 @@ npm run dev
 
 ## Production Build
 
-```bash
-# Frontend production build
+```powershell
+# Frontend
 cd frontend
 npm run build
-npm run preview  # Test production build
+npm run preview
 
-# Backend production
-cd backend
+# Backend (increase workers as needed)
+cd ../backend
 uvicorn app:app --host 0.0.0.0 --port 8000 --workers 4
 ```
 
-## Next Steps
+## Need more?
 
 - Read the full [README.md](README.md) for detailed documentation
 - Customize the chatbot responses in `backend/app.py`
@@ -186,4 +223,4 @@ uvicorn app:app --host 0.0.0.0 --port 8000 --workers 4
 
 ---
 
-**Happy Chatting! 🎉**
+— Happy Chatting! 🎉
