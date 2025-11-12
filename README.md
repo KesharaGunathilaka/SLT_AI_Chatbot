@@ -1,6 +1,6 @@
 # 🤖 SLT AI Chatbot
 
-AI-powered chatbot for Sri Lanka Telecom (SLT) that provides intelligent customer support using Retrieval-Augmented Generation (RAG) and local/cloud LLM integration. The system scrapes and indexes SLT website content, stores it in a vector database, and uses hybrid search with optional reranking to provide accurate, context-aware responses.
+AI-powered chatbot for Sri Lanka Telecom (SLT) that provides intelligent customer support using Retrieval-Augmented Generation (RAG) and local/cloud LLM integration. The system scrapes and indexes SLT website content, stores it in Milvus (vector database), and uses hybrid search with optional reranking to provide accurate, context-aware responses.
 
 ## 📋 Table of Contents
 
@@ -20,7 +20,7 @@ AI-powered chatbot for Sri Lanka Telecom (SLT) that provides intelligent custome
 ### 🎯 Core Capabilities
 - **Intelligent Q&A**: Answers questions about SLT services, packages, and support
 - **Multi-Source Data**: Scrapes and indexes content from the SLT website
-- **Hybrid Search**: Dense vector search (Milvus/Zilliz) + BM25 keyword search
+- **Hybrid Search**: Dense vector search (Milvus) + BM25 keyword search
 - **Embeddings**: Default `BAAI/bge-base-en-v1.5` (768-dim), configurable
 - **Smart Reranking (optional)**: `BAAI/bge-reranker-base` via FlagEmbedding or CrossEncoder
 - **Multi-Query Expansion (optional)**: Expands queries to improve recall
@@ -32,7 +32,7 @@ AI-powered chatbot for Sri Lanka Telecom (SLT) that provides intelligent custome
 - **Automatic Fallback**: Falls back to cloud LLM if given LLM models fail
 - **Backup Model Support**: Automatic fallback to backup model on rate limits with retry logic
 - **Rate Limit Handling**: Intelligent retry mechanism with exponential backoff for API rate limits
-- **Vector Database**: Zilliz Cloud (Milvus) for scalable vector storage
+- **Vector Database**: Milvus (runs locally in Docker) for scalable vector storage
 - **PostgreSQL Integration**: Stores page metadata and version history
 - **Async Architecture**: High-performance async web crawling with crawl4ai
 - **Modern UI**: React + Vite frontend with Tailwind CSS
@@ -61,7 +61,7 @@ AI-powered chatbot for Sri Lanka Telecom (SLT) that provides intelligent custome
        ▼                                  ▼
 ┌──────────────────┐            ┌─────────────────────┐
 │  Vector Database │            │    PostgreSQL       │
-│  (Zilliz/Milvus) │            │  (Page Metadata)    │
+│     (Milvus)     │            │   (Page Metadata)   │
 │                  │            │                     │
 │  • BGE-base      │            │  • URLs             │
 │  • Embeddings    │            │  • Categories       │
@@ -94,7 +94,7 @@ AI-powered chatbot for Sri Lanka Telecom (SLT) that provides intelligent custome
 2. **Processing**: Content converted to markdown, classified and cleaned using LLM
 3. **Storage**: Pages stored in PostgreSQL with metadata
 4. **Vectorization**: Content chunked and embedded using BGE-base (Sentence Transformers)
-5. **Indexing**: Vectors stored in Zilliz Cloud for similarity search
+5. **Indexing**: Vectors stored in Milvus for similarity search
 6. **Query**: User questions embedded and matched against vector index
 7. **Retrieval**: Top-k results retrieved and reranked
 8. **Generation**: LLM generates response using retrieved context
@@ -112,7 +112,7 @@ AI-powered chatbot for Sri Lanka Telecom (SLT) that provides intelligent custome
   - Sentence Transformers (default: `BAAI/bge-base-en-v1.5`, 768-dim)
 - **Reranking**:
   - Optional reranker: `BAAI/bge-reranker-base` (FlagEmbedding or CrossEncoder)
-- **Vector DB**: Zilliz Cloud / Milvus (pymilvus)
+- **Vector DB**: Milvus (pymilvus)
 - **Database**: PostgreSQL (asyncpg)
 - **Web Scraping**:
   - crawl4ai (async crawler)
@@ -131,15 +131,17 @@ AI-powered chatbot for Sri Lanka Telecom (SLT) that provides intelligent custome
 Before you begin, ensure you have the following installed:
 
 ### Required Software
-- **Python**: 3.9 or higher
+- **Python**: 3.12 or higher (3.10+ also works)
 - **Node.js**: 18.x or higher
 - **npm**: 9.x or higher
 - **PostgreSQL**: 14.x or higher
+- **Docker Desktop**: Latest (for running Milvus locally)
 - **Git**: Latest version
 
 ### External Services
-- **Zilliz Cloud Account**: For vector database (or local Milvus installation)
-- **Ollama** (optional): For local LLM inference
+- **Postgres** runs locally.
+- **Milvus** runs locally in Docker.
+- **Ollama**: For local LLM inference
 - **Groq API Key** (optional): For cloud LLM
 - **Groq Backup API Key** (optional but recommended): For automatic fallback during rate limits
 
@@ -155,21 +157,21 @@ cd SLT_AI_Chatbot
 ### 2. Backend Setup
 
 #### Create Virtual Environment
-```bash
+```powershell
 cd backend
-python3 -m venv venv # Recommend python 3.12+
-source venv/bin/activate  # On Windows: venv\Scripts\activate
+python -m venv .venv  # Recommend Python 3.12+
+./.venv/Scripts/activate
 ```
 
 #### Install Dependencies
-```bash
+```powershell
 pip install --upgrade pip
 pip install -r requirements.txt
 ```
 
 ### 3. Frontend Setup
 
-```bash
+```powershell
 cd ../frontend
 npm install
 ```
@@ -180,14 +182,12 @@ npm install
 
 Create a `.env` file in the `backend/` directory:
 
-```bash
-# Database Configuration
+```env
+# Database Configuration (PostgreSQL)
 DATABASE_URL=postgresql://user:password@localhost:5432/slt_chatbot
 
-# Zilliz Cloud / Milvus Configuration
-ZILLIZ_CLOUD_URI=https://your-cluster.zillizcloud.com
-ZILLIZ_CLOUD_API_KEY=your_api_key_here
-# Vector collection (must be set for vectorizer; backend defaults to SLT_AI if unset)
+# Milvus Configuration
+# Host/port are hard-coded to localhost:19530 in code. Change code if ports differ.
 VECTOR_COLLECTION=SLT_AI
 
 # Embedding Model Configuration
@@ -231,9 +231,9 @@ VITE_FRONTEND_API_URL=http://localhost:8000
 
 ### Database Initialization
 
-```bash
+```powershell
 cd backend
-source venv/bin/activate
+./.venv/Scripts/activate
 python db_init.py
 ```
 
@@ -241,12 +241,23 @@ This will:
 - Create the PostgreSQL database if it doesn't exist
 - Create required tables (pages, page_versions, etc.)
 
-### Zilliz Cloud Setup
+### Milvus Setup (Docker, Windows)
 
-1. Sign up at [Zilliz Cloud](https://cloud.zilliz.com/)
-2. Create a new cluster
-3. Copy the URI and API key to your `.env` file
-4. The vector collection will be created automatically during vectorization
+Run Milvus locally in Docker (listening on 19530 and 9091):
+
+```powershell
+docker pull milvusdb/milvus:latest
+docker run -d --name milvus-standalone `
+  -p 19530:19530 -p 9091:9091 `
+  -v milvus_data:/var/lib/milvus `
+  -e ETCD_USE_EMBED=true -e MINIO_USE_EMBED=true `
+  milvusdb/milvus:latest
+
+# Health check
+python -c "from pymilvus import connections; connections.connect(host='localhost', port='19530'); print('Milvus OK')"
+```
+
+The vector collection (`VECTOR_COLLECTION`) will be created automatically by `vectorize.py` if it doesn't exist.
 
 ## 📖 Usage
 
@@ -259,9 +270,9 @@ ollama run llama3.1  # or mistral (imported model)
 
 The crawler fetches and processes content from the SLT website:
 
-```bash
+```powershell
 cd backend
-source venv/bin/activate
+./.venv/Scripts/activate
 python crawl.py
 ```
 
@@ -289,7 +300,7 @@ This will:
 - Load pages from PostgreSQL
 - Split content into chunks (1000 chars, 200 overlap)
 - Generate embeddings using BGE
-- Store vectors in Zilliz Cloud
+- Store vectors in Milvus
 - Mark pages as vectorized
 
 **Process**: 
@@ -301,14 +312,14 @@ This will:
 
 Option A — Recommended (uvicorn on port 8000):
 
-```bash
+```powershell
 # Make sure you're in the backend directory with venv activated
 uvicorn app:app --host 0.0.0.0 --port 8000 --reload
 ```
 
 Option B — Run the module directly (defaults to port 8000):
 
-```bash
+```powershell
 python app.py
 ```
 
@@ -318,7 +329,7 @@ Set `VITE_FRONTEND_API_URL` to match the port you choose (see Frontend env vars 
 
 In a new terminal:
 
-```bash
+```powershell
 cd frontend
 npm run dev
 ```
@@ -334,7 +345,7 @@ Note: The frontend uses `VITE_FRONTEND_API_URL` to reach the backend. Ensure it 
 
 1. Install Ollama from [ollama.ai](https://ollama.ai)
 2. Pull a model:
-   ```bash
+  ```powershell
    ollama pull llama3.1
    ```
 3. Update `llm_model.py` default config:
@@ -420,10 +431,13 @@ pip install crawl4ai
 - Check connection string in `.env`
 - Ensure database exists: `python db_init.py`
 
-#### 3. Zilliz Connection Error
-- Verify URI and API key in `.env`
-- Check network connectivity
-- Ensure cluster is active in Zilliz dashboard
+#### 3. Milvus Connection Error
+- Ensure Docker container is running: `docker ps | findstr milvus`
+- Check logs: `docker logs --tail 200 milvus-standalone`
+- Test from Python:
+  ```powershell
+  python -c "from pymilvus import connections; connections.connect(host='localhost', port='19530'); print('Milvus OK')"
+  ```
 
 #### 4. Ollama Not Responding
 ```bash
@@ -476,7 +490,7 @@ If you encounter rate limit errors (HTTP 429):
 
 ### Check System Status
 
-```bash
+```powershell
 # Check if backend is running
 curl http://localhost:8000/
 
@@ -484,7 +498,7 @@ curl http://localhost:8000/
 curl http://localhost:5173/
 
 # Check vector collection
-python -c "from pymilvus import connections, Collection; connections.connect(uri='...', token='...'); print(Collection('slt_content').num_entities)"
+python -c "from pymilvus import connections, Collection; connections.connect(host='localhost', port='19530'); print(Collection('SLT_AI').num_entities)"
 ```
 
 ## 🤝 Contributing
