@@ -277,23 +277,55 @@ def select_diverse_chunks(chunks: List[Dict[str, Any]], top_n: int) -> List[str]
 
 
 # GENERATE ANSWER
-def generate_answer(q: str, ctxs: List[str]) -> Dict[str, str]:
-    context = "\n\n".join(ctxs)
+def generate_answer(q: str, ctxs: List[Dict[str, Any]], history: List[str]) -> Dict[str, str]:
+    
+    formatted_ctx = []
+    unique_urls = []
+    
+    for i, c in enumerate(ctxs):
+        url = c.get("url", "")
+        if url not in unique_urls:
+            unique_urls.append(url)
+
+        formatted_ctx.append(f"Source [{i+1}] (URL: {url}):\n{c['text']}")
+
+    context_str = "\n\n".join(formatted_ctx)
+
+    history_str = ""
+    if history:
+        history_entries = history[-6:]
+        history_str = "Conversation History:\n" + "\n".join(history_entries) + "\n"
+
     prompt = f"""
-You are an expert assistant for Sri Lanka Telecom.
-Use ONLY the context below to answer factually.
+You are an expert ISP consultant for Sri Lanka Telecom.
+Use the Context and History below to answer.
 
+{history_str}
 Context:
-{context}
+{context_str}
 
-Question: {q}
+User Question: {q}
 
 1. Give a concise, correct answer.
-2. End with: "Sources: <list URLs>"
+2. STRICTLY provide exactly TWO most relevant source URLs at the bottom.
+3. Give follow up questions according to given context and answer and history.
+
+Format:
+[Your Answer Here]
+
+**Sources:**
+* https://slt.lk/en/broadband/packages
+* https://slt.lk/en/personal/peo-tv/packages-and-charges
+
+**Next Suggestion:**
+* Do you want more inforamation about the {context_str}
+* What are the other options available
 """
     resp = query_llm(prompt)
-    return {"reply": resp.strip(),
-            "next_suggestion": "Would you like to know more about related SLT services?"}
+    return {
+        "reply": resp.strip(),
+        "next_suggestion": "Would you like to know more about related SLT services?"
+        }
 
 
 # API MODELS
@@ -307,20 +339,18 @@ class ChatResponse(BaseModel):
     next_suggestion: str
 
 
-memory: Dict[str, List[str]] = {}
-
+history_store: Dict[str, List[str]] = {}
 
 @app.post("/chat", response_model=ChatResponse)
 async def chat(req: ChatRequest):
     q = req.message.strip()
     if not q:
-        return ChatResponse(reply="⚠️ Please enter a question.", next_suggestion="")
-    memory.setdefault(req.session_id, []).append(q)
+        return ChatResponse(reply="Please enter a question.", next_suggestion="")
     qvec = embed_query(q)
     semantic_results = milvus_search(qvec, SEARCH_TOP_K)
-    keyword_results = bm25_search(q, k=15)
+    keyword_results = bm25_search(q, k=20)
     # Merge with weighting
-    alpha = 0.40  # 40% semantic, 60% keyword
+    alpha = 0.70  # 40% semantic, 60% keyword
     combined = []
 
     # Normalize BM25 scores to similar scale
@@ -357,7 +387,15 @@ async def chat(req: ChatRequest):
         return ChatResponse(reply=" No relevant information found.", next_suggestion="Try rephrasing your question.")
     reranked = rerank(q, final[:RERANK_TOP_K], RERANK_TOP_K)
     top_chunks = select_diverse_chunks(reranked, CONTEXT_CHUNKS)
-    ans = generate_answer(q, top_chunks)
+
+    user_history = history_store.get(req.session_id, [])
+    ans = generate_answer(q, top_chunks, user_history)
+
+    history_store.setdefault(req.session_id, []).extend([
+        f"User: {q}",
+        f"AI: {ans['reply']}"
+    ])
+    
     return ChatResponse(**ans)
 
 # MAIN
