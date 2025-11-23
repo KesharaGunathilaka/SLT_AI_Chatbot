@@ -10,7 +10,7 @@ GROQ_API_KEY_BACKUP = os.getenv("GROQ_API_KEY_BACKUP")
 
 # Default configuration
 DEFAULT_CONFIG = {
-    "provider": "groq",  # options: "ollama", "lmstudio", "groq"
+    "provider": "ollama",  # options: "ollama", "lmstudio", "groq"
     "ollama_model": "mistral",
     "lmstudio_model": "openai/gpt-oss-20b",
     "groq_model": "openai/gpt-oss-120b",
