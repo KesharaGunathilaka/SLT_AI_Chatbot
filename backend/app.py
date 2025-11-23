@@ -249,39 +249,34 @@ def cosine_sim(a: np.ndarray, b: np.ndarray) -> float:
     return float(np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b)))
 
 
-def select_diverse_chunks(chunks: List[Dict[str, Any]], top_n: int) -> List[str]:
+def select_diverse_chunks(chunks: List[Dict[str, Any]], top_n: int) -> List[Dict[str, Any]]:
     if len(chunks) <= top_n:
-        return [c["text"] for c in chunks]
-    # Precompute embeddings for candidate texts in batch
-    texts = [c["text"] for c in chunks]
+        return chunks[:]
+    texts = [c.get("text", "") for c in chunks]
     embeddings = embedder.encode(texts, convert_to_numpy=True)
-    chosen_texts = []
+    chosen = []
     chosen_embs = []
-    # greedy selection: pick highest-scoring first, then add if diverse
     for idx, c in enumerate(chunks):
         emb = embeddings[idx]
         if not chosen_embs:
-            chosen_texts.append(c["text"])
+            chosen.append(c)
             chosen_embs.append(emb)
         else:
             max_sim = max(cosine_sim(emb, ce) for ce in chosen_embs)
-            if max_sim < 0.85:  # diversity threshold; tune as needed
-                chosen_texts.append(c["text"])
+            if max_sim < 0.85:  # diversity threshold
+                chosen.append(c)
                 chosen_embs.append(emb)
-        if len(chosen_texts) >= top_n:
+        if len(chosen) >= top_n:
             break
-    # fallback: if we didn't reach top_n (too similar), just return top N texts
-    if len(chosen_texts) < top_n:
-        return [c["text"] for c in chunks[:top_n]]
-    return chosen_texts
+    if len(chosen) < top_n:
+        return chunks[:top_n]
+    return chosen
 
 
 # GENERATE ANSWER
 def generate_answer(q: str, ctxs: List[Dict[str, Any]], history: List[str]) -> Dict[str, str]:
-    
     formatted_ctx = []
     unique_urls = []
-    
     for i, c in enumerate(ctxs):
         url = c.get("url", "")
         if url not in unique_urls:
@@ -290,7 +285,6 @@ def generate_answer(q: str, ctxs: List[Dict[str, Any]], history: List[str]) -> D
         formatted_ctx.append(f"Source [{i+1}] (URL: {url}):\n{c['text']}")
 
     context_str = "\n\n".join(formatted_ctx)
-
     history_str = ""
     if history:
         history_entries = history[-6:]
@@ -308,24 +302,24 @@ User Question: {q}
 
 1. Give a concise, correct answer.
 2. STRICTLY provide exactly TWO most relevant source URLs at the bottom.
-3. Give follow up questions according to given context and answer and history.
+3. Give follow up questions according to given context, answer and history.
 
 Format:
 [Your Answer Here]
 
 **Sources:**
-* https://slt.lk/en/broadband/packages
-* https://slt.lk/en/personal/peo-tv/packages-and-charges
+* <source-url-1>
+* <source-url-2>
 
 **Next Suggestion:**
-* Do you want more inforamation about the {context_str}
-* What are the other options available
+* <question-1>
+* <question-2>
 """
     resp = query_llm(prompt)
     return {
         "reply": resp.strip(),
         "next_suggestion": "Would you like to know more about related SLT services?"
-        }
+    }
 
 
 # API MODELS
@@ -346,11 +340,16 @@ async def chat(req: ChatRequest):
     q = req.message.strip()
     if not q:
         return ChatResponse(reply="Please enter a question.", next_suggestion="")
-    qvec = embed_query(q)
+    
+    search_q = q
+    if "data" in q.lower() and "broadband" not in q.lower():
+        search_q = f"{q} broadband connection packages"
+    
+    qvec = embed_query(search_q)
     semantic_results = milvus_search(qvec, SEARCH_TOP_K)
-    keyword_results = bm25_search(q, k=20)
+    keyword_results = bm25_search(search_q, k=20)
     # Merge with weighting
-    alpha = 0.70  # 40% semantic, 60% keyword
+    alpha = 0.60  # 40% semantic, 60% keyword
     combined = []
 
     # Normalize BM25 scores to similar scale
