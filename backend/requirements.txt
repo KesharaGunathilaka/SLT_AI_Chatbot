@@ -1,32 +1,8 @@
-#Backend runtime dependencies
-python-dotenv==1.0.1
-requests>=2.31.0
-pydantic>=2.7,<3
-
-# Async HTTP and parsing
-aiohttp
-beautifulsoup4
-crawl4ai
-
-# Database
-asyncpg
-
-# Vector store and search
+streamlit
+sentence-transformers
 pymilvus
 rank-bm25
-
-# Embeddings and NLP
+FlagEmbedding   # optional; if you want reranker
+torch           # sometimes needed explicitly for sentence-transformers
 numpy
-sentence-transformers
-transformers
-
-# LangChain ecosystem
-langchain
-langchain-huggingface
-langchain-community
-langchain-core
-langchain-experimental==0.3.4
-langchain-text-splitters==0.3.11
-
-# Web interface
-streamlit
+scikit-learn
